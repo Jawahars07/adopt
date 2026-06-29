@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { demoAnalyze } from "@/lib/demo";
-import type { Analysis } from "@/lib/types";
+import { SEED_PLAYBOOK, retrieve } from "@/lib/playbook";
+import type { Analysis, PlaybookEntry } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -42,9 +43,13 @@ function extractJson(text: string): Analysis | null {
 
 export async function POST(req: Request) {
   let task = "";
+  let learned: PlaybookEntry[] = [];
   try {
     const body = await req.json();
     task = (body?.task || "").toString().trim();
+    // The client passes its accumulated, feedback-ranked entries so retrieval
+    // improves as adoption data grows (the flywheel). Seed entries always apply.
+    if (Array.isArray(body?.playbook)) learned = body.playbook as PlaybookEntry[];
   } catch {
     /* ignore */
   }
@@ -53,19 +58,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Please describe a task." }, { status: 400 });
   }
 
+  // Feedback-weighted retrieval over the Living Playbook.
+  const relatedProven = retrieve(task, [...learned, ...SEED_PLAYBOOK], 2);
+
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
     // Free demo mode — no API key configured.
-    return NextResponse.json(demoAnalyze(task));
+    return NextResponse.json({ ...demoAnalyze(task), relatedProven });
   }
 
   try {
     const client = new Anthropic({ apiKey: key });
+    // Ground the model in what has actually been adopted (retrieval-augmented).
+    const provenContext = relatedProven.length
+      ? `\n\nProven plays for similar tasks (prefer reusing these if they fit):\n${relatedProven
+          .map((p) => `- "${p.pattern}" → ${p.recommendedTool} (adopted ${p.adoptionRate}%, rated ${p.avgRating}/5)`)
+          .join("\n")}`
+      : "";
     const msg = await client.messages.create({
       model: MODEL,
       max_tokens: 1500,
       system: SYSTEM,
-      messages: [{ role: "user", content: `Task: ${task}` }],
+      messages: [{ role: "user", content: `Task: ${task}${provenContext}` }],
     });
     const text = msg.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -73,12 +87,12 @@ export async function POST(req: Request) {
       .join("");
     const parsed = extractJson(text);
     if (!parsed) {
-      return NextResponse.json({ ...demoAnalyze(task), demo: true });
+      return NextResponse.json({ ...demoAnalyze(task), relatedProven, demo: true });
     }
-    return NextResponse.json({ ...parsed, demo: false });
+    return NextResponse.json({ ...parsed, relatedProven, demo: false });
   } catch (err) {
     // Any API failure (quota, network, bad key) → graceful demo fallback.
     console.error("Anthropic call failed, falling back to demo:", err);
-    return NextResponse.json({ ...demoAnalyze(task), demo: true });
+    return NextResponse.json({ ...demoAnalyze(task), relatedProven, demo: true });
   }
 }

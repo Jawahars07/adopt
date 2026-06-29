@@ -5,10 +5,29 @@ Microsoft 365 Copilot tool, a ready-to-paste prompt, a plain-language adoption g
 and feedback that rolls up into an **adoption dashboard**.
 
 Built to mirror the real loop of driving GenAI adoption inside a large organisation:
-**identify → qualify → enable → adopt → measure.**
+**identify → qualify → enable → adopt → measure → learn.**
 
 > Works with **no API key** out of the box (offline demo engine), so you can try the
 > full flow instantly. Add an Anthropic key for live model analysis.
+
+## What makes it defensible (not just an AI wrapper)
+
+A single LLM call is replicable by anyone in an afternoon. Adopt's value is a
+**data flywheel** — a stateful system that gets better from real usage, which a
+stateless chat prompt structurally cannot do:
+
+| Mechanism | What it does |
+|-----------|--------------|
+| 🧠 **Living Playbook** | Every qualified task + its feedback becomes a reusable entry, ranked by real adoption success. See `/playbook`. |
+| 🔁 **Feedback-weighted retrieval** | New tasks retrieve the *proven* plays colleagues actually adopted and rated highly — recommendations improve automatically as data grows (`lib/playbook.ts`). |
+| ⚙️ **Evaluator–Optimizer** | When a prompt is rated poorly, the system critiques and **rewrites it on its own** (`/api/improve`) — the [evaluator-optimizer pattern](https://www.agentpatterns.ai/agent-design/evaluator-optimizer/). |
+
+> *"Copy the code in an afternoon; you can't copy the year of adoption data it learns from."*
+> The flywheel is the [only AI moat that compounds](https://www.startups.com/lexicon/data-flywheel).
+
+**Scaling note:** persistence is client-side (`localStorage`) so the demo runs free and
+private. The documented upgrade to make the flywheel *org-wide* is a one-component swap:
+vector embeddings + a shared store (Vercel KV / Postgres).
 
 ## What it does
 

@@ -17,7 +17,44 @@ export type Analysis = {
   prompt: string;
   /** Common pitfalls / things to check. */
   cautions: string[];
+  /** Proven, feedback-ranked playbook entries similar to this task (the flywheel). */
+  relatedProven?: ProvenMatch[];
   /** True when produced by the offline demo engine (no API key). */
+  demo?: boolean;
+};
+
+/** A proven entry surfaced from the Living Playbook for a new task. */
+export type ProvenMatch = {
+  id: string;
+  pattern: string;
+  recommendedTool: string;
+  prompt: string;
+  adoptionRate: number; // 0-100, % of times this was actually adopted
+  avgRating: number; // 1-5
+  sampleSize: number; // how many times it's been used
+};
+
+/** A learned entry in the Living Playbook — proven prompts ranked by adoption. */
+export type PlaybookEntry = {
+  id: string;
+  pattern: string;
+  keywords: string[];
+  recommendedTool: string;
+  prompt: string;
+  adoptedCount: number;
+  totalCount: number;
+  avgRating: number;
+  /** How many ratings contributed to avgRating (for running averages). */
+  ratingCount?: number;
+  origin: "seed" | "learned";
+  updatedAt: number;
+};
+
+/** Result of the evaluator-optimizer self-improvement loop. */
+export type Improvement = {
+  critique: string;
+  improvedPrompt: string;
+  changes: string[];
   demo?: boolean;
 };
 

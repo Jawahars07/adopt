@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { Analysis, StoredUseCase } from "@/lib/types";
+import { tokenize } from "@/lib/playbook";
+import type { Analysis, StoredUseCase, PlaybookEntry, Improvement } from "@/lib/types";
 
 const EXAMPLES = [
   "Summarise long email threads before I reply",
@@ -11,6 +12,7 @@ const EXAMPLES = [
 ];
 
 const STORE_KEY = "adopt.usecases";
+const PLAYBOOK_KEY = "adopt.playbook";
 
 function loadStore(): StoredUseCase[] {
   if (typeof window === "undefined") return [];
@@ -29,6 +31,50 @@ function saveCase(c: StoredUseCase) {
   localStorage.setItem(STORE_KEY, JSON.stringify(all.slice(0, 100)));
 }
 
+function loadLearned(): PlaybookEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(PLAYBOOK_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+/** Fold a piece of feedback into the Living Playbook — this is the flywheel. */
+function learnFromFeedback(c: StoredUseCase) {
+  const all = loadLearned();
+  const id = `learned-${c.recommendedTool}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const existing = all.find((e) => e.id === id);
+  const rated = typeof c.rating === "number";
+  if (existing) {
+    existing.totalCount += 1;
+    if (c.adopted) existing.adoptedCount += 1;
+    if (rated) {
+      const n = existing.ratingCount || 0;
+      existing.avgRating = (existing.avgRating * n + c.rating!) / (n + 1);
+      existing.ratingCount = n + 1;
+    }
+    // Keep the most recent successful prompt as the canonical one.
+    if (c.adopted) existing.prompt = c.prompt;
+    existing.updatedAt = Date.now();
+  } else {
+    all.unshift({
+      id,
+      pattern: c.title,
+      keywords: Array.from(new Set([...tokenize(c.task), ...tokenize(c.title)])).slice(0, 12),
+      recommendedTool: c.recommendedTool,
+      prompt: c.prompt,
+      adoptedCount: c.adopted ? 1 : 0,
+      totalCount: 1,
+      avgRating: rated ? c.rating! : 0,
+      ratingCount: rated ? 1 : 0,
+      origin: "learned",
+      updatedAt: Date.now(),
+    });
+  }
+  localStorage.setItem(PLAYBOOK_KEY, JSON.stringify(all.slice(0, 100)));
+}
+
 const IMPACT_COLOR: Record<string, string> = {
   high: "bg-emerald-100 text-emerald-700",
   medium: "bg-amber-100 text-amber-700",
@@ -42,6 +88,8 @@ export default function Home() {
   const [result, setResult] = useState<StoredUseCase | null>(null);
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [improving, setImproving] = useState(false);
+  const [improvement, setImprovement] = useState<Improvement | null>(null);
 
   async function analyze(e?: React.FormEvent) {
     e?.preventDefault();
@@ -50,11 +98,13 @@ export default function Home() {
     setError("");
     setResult(null);
     setSaved(false);
+    setImprovement(null);
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task }),
+        // Send accumulated learning so retrieval improves with adoption (flywheel).
+        body: JSON.stringify({ task, playbook: loadLearned() }),
       });
       if (!res.ok) throw new Error((await res.json()).error || "Something went wrong.");
       const data: Analysis = await res.json();
@@ -73,7 +123,29 @@ export default function Home() {
     const updated = { ...result, ...patch };
     setResult(updated);
     saveCase(updated);
+    learnFromFeedback(updated); // ← feed the flywheel
     setSaved(true);
+  }
+
+  async function improvePrompt() {
+    if (!result) return;
+    setImproving(true);
+    setImprovement(null);
+    try {
+      const res = await fetch("/api/improve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: result.prompt, painPoint: result.painPoint || "", rating: result.rating || 0 }),
+      });
+      const data: Improvement = await res.json();
+      setImprovement(data);
+      // Adopt the improved prompt as the canonical one going forward.
+      recordFeedback({ prompt: data.improvedPrompt });
+    } catch {
+      setError("Could not improve the prompt right now.");
+    } finally {
+      setImproving(false);
+    }
   }
 
   return (
@@ -81,13 +153,14 @@ export default function Home() {
       {/* Hero / intake */}
       <section className="space-y-5">
         <div className="space-y-2">
-          <span className="label">GenAI adoption companion</span>
+          <span className="label">Self-improving GenAI adoption companion</span>
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
             Describe a work task. Get a qualified GenAI use case.
           </h1>
           <p className="max-w-2xl text-black/60">
-            Adopt turns an everyday task into a fit assessment, the right Microsoft 365 Copilot tool,
-            a ready-to-paste prompt, and a plain-language adoption guide — then tracks whether it stuck.
+            Adopt qualifies the task, recommends the right Microsoft 365 Copilot tool, and gives you a
+            ready-to-use prompt — drawing on a <strong>living playbook</strong> of what colleagues have
+            actually adopted, and rewriting prompts that underperform.
           </p>
         </div>
 
@@ -129,6 +202,26 @@ export default function Home() {
             <p className="rounded-xl bg-amber-50 px-4 py-2 text-xs text-amber-700">
               Demo mode — generated offline without an API key. Add <code>ANTHROPIC_API_KEY</code> for live model analysis.
             </p>
+          )}
+
+          {/* Learned-from banner — the flywheel made visible */}
+          {result.relatedProven && result.relatedProven.length > 0 && (
+            <div className="rounded-2xl border border-accent/20 bg-accent-soft p-5">
+              <span className="label text-accent">🔁 Learned from real adoption</span>
+              <p className="mt-1 text-sm text-black/70">
+                Colleagues with similar tasks adopted these proven plays — surfaced because they worked, not because a prompt guessed.
+              </p>
+              <div className="mt-3 space-y-2">
+                {result.relatedProven.map((p) => (
+                  <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-4 py-2 text-sm">
+                    <span className="font-medium">{p.pattern}</span>
+                    <span className="text-xs text-black/50">
+                      {p.recommendedTool} · adopted {p.adoptionRate}% · ★ {p.avgRating.toFixed(1)} ({p.sampleSize})
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Qualification */}
@@ -204,9 +297,9 @@ export default function Home() {
             </ul>
           </div>
 
-          {/* Feedback capture */}
+          {/* Feedback capture + self-improvement */}
           <div className="card p-6">
-            <span className="label">Did it help? (captured for the adoption dashboard)</span>
+            <span className="label">Did it help? (captured for the dashboard &amp; the playbook)</span>
             <div className="mt-3 flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-black/60">Rate:</span>
@@ -239,7 +332,42 @@ export default function Home() {
               defaultValue={result.painPoint || ""}
               onBlur={(e) => recordFeedback({ painPoint: e.target.value.trim() || undefined })}
             />
-            {saved && <p className="mt-2 text-xs text-emerald-600">Saved to the dashboard.</p>}
+            {saved && <p className="mt-2 text-xs text-emerald-600">Saved — and folded into the living playbook.</p>}
+
+            {/* Evaluator-Optimizer: offered when the prompt underperformed */}
+            {typeof result.rating === "number" && result.rating <= 3 && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm text-amber-800">
+                  Low rating noted. Adopt can rewrite this prompt to fix what didn&apos;t work.
+                </p>
+                <button onClick={improvePrompt} className="btn-primary mt-3 text-xs" disabled={improving}>
+                  {improving ? "Improving…" : "⚙️ Improve this prompt automatically"}
+                </button>
+              </div>
+            )}
+
+            {improvement && (
+              <div className="mt-4 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <div>
+                  <span className="label text-emerald-700">What it diagnosed</span>
+                  <p className="mt-1 text-sm text-black/75">{improvement.critique}</p>
+                </div>
+                <div>
+                  <span className="label text-emerald-700">Improved prompt (now saved)</span>
+                  <pre className="mt-1 whitespace-pre-wrap rounded-lg bg-ink p-3 text-xs leading-relaxed text-white/90">
+                    {improvement.improvedPrompt}
+                  </pre>
+                </div>
+                <div>
+                  <span className="label text-emerald-700">Changes</span>
+                  <ul className="mt-1 space-y-1">
+                    {improvement.changes.map((c, i) => (
+                      <li key={i} className="text-xs text-black/70">• {c}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}
