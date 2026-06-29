@@ -40,8 +40,10 @@ vector embeddings + a shared store (Vercel KV / Postgres).
 
 ## Stack
 
-- **Next.js 14** (App Router) · **React 18** · **TypeScript** · **Tailwind CSS**
-- **Anthropic Claude** API (`@anthropic-ai/sdk`) with a graceful **offline demo fallback**
+- **Next.js 16** (App Router) · **React 19** · **TypeScript** · **Tailwind CSS**
+- **Model-agnostic** — no vendor SDK. A pluggable LLM layer (`lib/llm.ts`) runs on a free
+  local model (**Ollama**), any **OpenAI-compatible** endpoint (**Groq free tier**, OpenRouter,
+  LM Studio, vLLM), or Claude — all over plain `fetch`. Default is a fully **offline heuristic**.
 - Client-side storage (`localStorage`) — no database, deploys anywhere static-ish
 
 ```
@@ -73,10 +75,17 @@ unset to ship the demo).
 
 ## How the model is used
 
-A single structured call (default `claude-sonnet-4-6`) returns a JSON adoption package.
-The system prompt forces honesty — poor-fit tasks score low, and sensitive-data tasks are
-flagged with a caution and a reduced score. If the key is missing or the call fails, the
-app falls back to the offline heuristic so the experience never breaks.
+A single structured call returns a JSON adoption package. The system prompt forces honesty —
+poor-fit tasks score low, and sensitive-data tasks are flagged with a reduced score. Set
+`LLM_PROVIDER` (see `.env.example`) to choose the backend; with nothing set it runs the
+offline heuristic. **Any provider failure falls back to the heuristic**, so it never breaks.
+
+```
+LLM_PROVIDER=demo     # offline heuristic (default) — $0, no account, no network
+LLM_PROVIDER=ollama   # local model on your machine — free & private
+LLM_PROVIDER=openai   # Groq free tier / OpenRouter / LM Studio / OpenAI
+LLM_PROVIDER=anthropic# Claude (optional)
+```
 
 ---
 

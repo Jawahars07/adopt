@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { complete, isDemo } from "@/lib/llm";
 import type { Improvement } from "@/lib/types";
 
 export const runtime = "nodejs";
-
-const MODEL = process.env.ADOPT_MODEL || "claude-sonnet-4-6";
 
 /**
  * Evaluator–Optimizer loop.
@@ -78,33 +76,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Nothing to improve." }, { status: 400 });
   }
 
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
+  // No model configured → heuristic improvement. $0, no dependency.
+  if (isDemo()) {
     return NextResponse.json(demoImprove(prompt, painPoint));
   }
 
   try {
-    const client = new Anthropic({ apiKey: key });
-    const msg = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1200,
+    const text = await complete({
       system: SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: `Underperforming prompt:\n${prompt}\n\nRating: ${rating}/5\nPain point: ${painPoint || "(none given)"}`,
-        },
-      ],
+      user: `Underperforming prompt:\n${prompt}\n\nRating: ${rating}/5\nPain point: ${painPoint || "(none given)"}`,
+      maxTokens: 1200,
     });
-    const text = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
     const parsed = extractJson(text);
     if (!parsed) return NextResponse.json({ ...demoImprove(prompt, painPoint), demo: true });
     return NextResponse.json({ ...parsed, demo: false });
   } catch (err) {
-    console.error("Improve call failed, falling back to demo:", err);
+    console.error("Improve call failed, falling back to heuristic:", err);
     return NextResponse.json({ ...demoImprove(prompt, painPoint), demo: true });
   }
 }

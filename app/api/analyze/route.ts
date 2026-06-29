@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { complete, isDemo } from "@/lib/llm";
 import { demoAnalyze } from "@/lib/demo";
 import { SEED_PLAYBOOK, retrieve } from "@/lib/playbook";
 import type { Analysis, PlaybookEntry } from "@/lib/types";
 
 export const runtime = "nodejs";
-
-const MODEL = process.env.ADOPT_MODEL || "claude-sonnet-4-6";
 
 const SYSTEM = `You are "Adopt", a Digital Workplace & GenAI adoption assistant for a large company.
 A colleague describes an everyday work task. You qualify it as a GenAI / Microsoft 365 Copilot use case
@@ -61,38 +59,27 @@ export async function POST(req: Request) {
   // Feedback-weighted retrieval over the Living Playbook.
   const relatedProven = retrieve(task, [...learned, ...SEED_PLAYBOOK], 2);
 
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    // Free demo mode — no API key configured.
+  // No model configured → run fully on the offline heuristic. $0, no dependency.
+  if (isDemo()) {
     return NextResponse.json({ ...demoAnalyze(task), relatedProven });
   }
 
   try {
-    const client = new Anthropic({ apiKey: key });
     // Ground the model in what has actually been adopted (retrieval-augmented).
     const provenContext = relatedProven.length
       ? `\n\nProven plays for similar tasks (prefer reusing these if they fit):\n${relatedProven
-          .map((p) => `- "${p.pattern}" → ${p.recommendedTool} (adopted ${p.adoptionRate}%, rated ${p.avgRating}/5)`)
+          .map((p) => `- "${p.pattern}" → ${p.recommendedTool}`)
           .join("\n")}`
       : "";
-    const msg = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1500,
-      system: SYSTEM,
-      messages: [{ role: "user", content: `Task: ${task}${provenContext}` }],
-    });
-    const text = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
+    const text = await complete({ system: SYSTEM, user: `Task: ${task}${provenContext}`, maxTokens: 1500 });
     const parsed = extractJson(text);
     if (!parsed) {
       return NextResponse.json({ ...demoAnalyze(task), relatedProven, demo: true });
     }
     return NextResponse.json({ ...parsed, relatedProven, demo: false });
   } catch (err) {
-    // Any API failure (quota, network, bad key) → graceful demo fallback.
-    console.error("Anthropic call failed, falling back to demo:", err);
+    // Any provider failure (down, quota, bad config) → graceful heuristic fallback.
+    console.error("LLM call failed, falling back to heuristic:", err);
     return NextResponse.json({ ...demoAnalyze(task), relatedProven, demo: true });
   }
 }
