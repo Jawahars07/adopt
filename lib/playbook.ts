@@ -147,5 +147,6 @@ export function retrieve(task: string, entries: PlaybookEntry[], limit = 2): Pro
     adoptionRate: e.totalCount > 0 ? Math.round((e.adoptedCount / e.totalCount) * 100) : 0,
     avgRating: e.avgRating,
     sampleSize: e.totalCount,
+    origin: e.origin,
   }));
 }

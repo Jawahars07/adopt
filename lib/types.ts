@@ -32,6 +32,8 @@ export type ProvenMatch = {
   adoptionRate: number; // 0-100, % of times this was actually adopted
   avgRating: number; // 1-5
   sampleSize: number; // how many times it's been used
+  /** "seed" = example default (no real usage yet); "learned" = measured from real feedback. */
+  origin: "seed" | "learned";
 };
 
 /** A learned entry in the Living Playbook — proven prompts ranked by adoption. */

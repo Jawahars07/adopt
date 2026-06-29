@@ -204,25 +204,38 @@ export default function Home() {
             </p>
           )}
 
-          {/* Learned-from banner — the flywheel made visible */}
-          {result.relatedProven && result.relatedProven.length > 0 && (
-            <div className="rounded-2xl border border-accent/20 bg-accent-soft p-5">
-              <span className="label text-accent">🔁 Learned from real adoption</span>
-              <p className="mt-1 text-sm text-black/70">
-                Colleagues with similar tasks adopted these proven plays — surfaced because they worked, not because a prompt guessed.
-              </p>
-              <div className="mt-3 space-y-2">
-                {result.relatedProven.map((p) => (
-                  <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-4 py-2 text-sm">
-                    <span className="font-medium">{p.pattern}</span>
-                    <span className="text-xs text-black/50">
-                      {p.recommendedTool} · adopted {p.adoptionRate}% · ★ {p.avgRating.toFixed(1)} ({p.sampleSize})
-                    </span>
-                  </div>
-                ))}
+          {/* Related-plays banner — the flywheel made visible */}
+          {result.relatedProven && result.relatedProven.length > 0 && (() => {
+            const hasLearned = result.relatedProven.some((p) => p.origin === "learned");
+            return (
+              <div className="rounded-2xl border border-accent/20 bg-accent-soft p-5">
+                <span className="label text-accent">
+                  {hasLearned ? "🔁 Learned from real adoption" : "📚 Suggested plays (examples)"}
+                </span>
+                <p className="mt-1 text-sm text-black/70">
+                  {hasLearned
+                    ? "Similar tasks were adopted before — these are surfaced because they worked, not because a prompt guessed."
+                    : "Example plays for similar tasks. As people rate and adopt, real adoption stats appear here and re-rank them."}
+                </p>
+                <div className="mt-3 space-y-2">
+                  {result.relatedProven.map((p) => (
+                    <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-4 py-2 text-sm">
+                      <span className="font-medium">{p.pattern}</span>
+                      {p.origin === "learned" && p.sampleSize > 0 ? (
+                        <span className="text-xs text-black/50">
+                          {p.recommendedTool} · adopted {p.adoptionRate}% · ★ {p.avgRating.toFixed(1)} ({p.sampleSize})
+                        </span>
+                      ) : (
+                        <span className="text-xs text-black/40">
+                          {p.recommendedTool} · example · not yet measured
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Qualification */}
           <div className="card p-6">
