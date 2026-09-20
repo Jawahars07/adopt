@@ -246,7 +246,12 @@ export default function RoutePage() {
               <button
                 onClick={() => {
                   setAdopted(false);
-                  setSaved(false);
+                  // Record the abandonment immediately. Waiting for a blocker
+                  // loses the signal entirely when someone answers the first
+                  // question and walks away — and abandonment is the single
+                  // most valuable datum this product collects. The blocker
+                  // refines this row rather than creating it.
+                  send({ adopted: false, rating: 2 });
                 }}
                 className={`btn text-xs ${adopted === false ? "border-negative text-negative" : ""}`}
               >

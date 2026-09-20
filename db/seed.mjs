@@ -23,11 +23,19 @@ if (!url) {
 // The generator is TypeScript and is the single source of the demo dataset, so
 // compile it rather than maintaining a second copy that can drift.
 console.log("Compiling the dataset generator...");
+// --rootDir . keeps the lib/ prefix on the emitted paths. Without it tsc infers
+// lib/ as the root and emits .tsbuild/demo-org.js, which the import below misses.
 execSync(
-  "npx tsc lib/catalog.ts lib/demo-org.ts --module commonjs --target es2022 --moduleResolution node --outDir .tsbuild --skipLibCheck",
+  "npx tsc lib/catalog.ts lib/demo-org.ts --module commonjs --target es2022 --moduleResolution node --rootDir . --outDir .tsbuild --skipLibCheck",
   { stdio: "inherit" },
 );
-const { buildDemoDataset } = await import("../.tsbuild/lib/demo-org.js");
+// CommonJS output: named exports land on the namespace, but fall back to
+// .default for the interop case rather than assuming one shape.
+const mod = await import("../.tsbuild/lib/demo-org.js");
+const buildDemoDataset = mod.buildDemoDataset ?? mod.default?.buildDemoDataset;
+if (typeof buildDemoDataset !== "function") {
+  throw new Error("Could not load buildDemoDataset from the compiled generator.");
+}
 
 const sql = neon(url);
 const data = buildDemoDataset();

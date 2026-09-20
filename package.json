@@ -10,7 +10,7 @@
     "test:security": "node tests/security.mjs",
     "test:e2e": "node tests/e2e.mjs",
     "test:routing": "rm -rf .tsbuild && tsc lib/catalog.ts lib/routing.ts tests/routing.test.ts --module commonjs --target es2022 --moduleResolution node --outDir .tsbuild --skipLibCheck && node .tsbuild/tests/routing.test.js",
-    "db:setup": "node db/seed.mjs"
+    "db:setup": "node --env-file-if-exists=.env.local db/seed.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

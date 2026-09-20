@@ -89,7 +89,14 @@ export async function getWorkspace(slug = DEMO_ORG.slug): Promise<Workspace> {
     const [stackRows, usageRows, useCaseRows, shadowRows] = await Promise.all([
       sql`select tool_slug, seats, approved_for_sensitive, monthly_price_eur
           from org_tools where org_id = ${org.id} order by seats desc`,
-      sql`select tool_slug, month, licensed_seats, active_seats
+      // month is formatted in SQL rather than in JS on purpose. The driver
+      // returns a `date` column as a JS Date at local midnight, so
+      // String(d).slice(0,10) yields "Tue Sep 01" and toISOString() can report
+      // the previous day in a positive-offset timezone. Both are silent: the
+      // first made "Wed Jul 01" sort above "Tue Sep 01" and the Stack page
+      // billed July's seat activity as current.
+      sql`select tool_slug, to_char(month, 'YYYY-MM-DD') as month,
+                 licensed_seats, active_seats
           from tool_usage_monthly where org_id = ${org.id} order by month asc`,
       sql`select u.id, u.category, u.department, u.routed_tool, u.gap_kind, u.created_at,
                  f.adopted, f.rating, f.blocker
@@ -115,7 +122,7 @@ export async function getWorkspace(slug = DEMO_ORG.slug): Promise<Workspace> {
       })),
       usage: (usageRows as Record<string, unknown>[]).map((r) => ({
         toolSlug: r.tool_slug as ToolSlug,
-        month: String(r.month).slice(0, 10),
+        month: String(r.month),
         licensedSeats: Number(r.licensed_seats),
         activeSeats: Number(r.active_seats),
       })),

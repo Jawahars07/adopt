@@ -103,6 +103,8 @@ await page.goto(BASE, { waitUntil: "networkidle" });
   check("Blocker capture appears", t2.toLowerCase().includes("what stopped you"));
   check("Shadow capture appears", t2.toLowerCase().includes("did you use something else"));
   check("Shadow question is non-judgemental", t2.includes("not a compliance check"));
+  check("Abandonment is acknowledged as saved without needing a blocker",
+    t2.toLowerCase().includes("recorded"));
 }
 
 console.log("\n=== G. POLICY GATE IS VISIBLE TO THE USER ===");
