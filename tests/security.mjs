@@ -147,7 +147,90 @@ console.log("\n=== 5. RATE LIMITING (route-task: 30/min, improve: 8/min) ===");
   check("/api/improve rate-limited more tightly", ilimited > 0, `${ilimited} of 14 blocked`);
 }
 
-console.log("\n=== 6. METHOD / SURFACE ===");
+console.log("\n=== 6. ADMIN ENDPOINTS (they accept vendor secrets) ===");
+{
+  const adminToken = process.env.ADOPT_ADMIN_TOKEN || "";
+
+  const noTok = await post("/api/connections", { toolSlug: "github-copilot", fields: { org: "x", token: "y" } });
+  check("POST /api/connections without a token is rejected", noTok.status === 401 || noTok.status === 503,
+    `status=${noTok.status}`);
+
+  const badTok = await fetch(BASE + "/api/connections", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-adopt-admin": "definitely-not-the-token" },
+    body: JSON.stringify({ toolSlug: "github-copilot", fields: { org: "x", token: "y" } }),
+  });
+  check("Wrong admin token is rejected", badTok.status === 401 || badTok.status === 503, `status=${badTok.status}`);
+
+  const syncNoTok = await post("/api/sync", {});
+  check("POST /api/sync without a token is rejected", syncNoTok.status === 401 || syncNoTok.status === 503,
+    `status=${syncNoTok.status}`);
+
+  const delNoTok = await fetch(BASE + "/api/connections", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ toolSlug: "github-copilot" }),
+  });
+  check("DELETE /api/connections without a token is rejected",
+    delNoTok.status === 401 || delNoTok.status === 503, `status=${delNoTok.status}`);
+
+  if (adminToken) {
+    const hdrs = { "Content-Type": "application/json", "x-adopt-admin": adminToken };
+    const badSlug = await fetch(BASE + "/api/connections", {
+      method: "POST", headers: hdrs,
+      body: JSON.stringify({ toolSlug: "../../etc/passwd", fields: {} }),
+    });
+    check("Unknown tool slug rejected", badSlug.status === 400, `status=${badSlug.status}`);
+
+    const noConnector = await fetch(BASE + "/api/connections", {
+      method: "POST", headers: hdrs,
+      body: JSON.stringify({ toolSlug: "slack-ai", fields: { anything: "x" } }),
+    });
+    check("A tool with no connector is rejected", noConnector.status === 400, `status=${noConnector.status}`);
+
+    const missing = await fetch(BASE + "/api/connections", {
+      method: "POST", headers: hdrs,
+      body: JSON.stringify({ toolSlug: "github-copilot", fields: { token: "ghp_x" } }),
+    });
+    check("Missing a required config field is rejected", missing.status === 400, `status=${missing.status}`);
+
+    // Undeclared fields must be dropped, not stored.
+    const extra = await fetch(BASE + "/api/connections", {
+      method: "POST", headers: hdrs,
+      body: JSON.stringify({
+        toolSlug: "github-copilot",
+        fields: { org: "adopt-test-org", token: "ghp_fake_for_validation_only", evil: "should-be-dropped" },
+      }),
+    });
+    const extraJson = await extra.json();
+    check("Valid credentials are accepted", extra.status === 200, `status=${extra.status}`);
+    check("Undeclared fields are dropped, not stored",
+      extra.status !== 200 || !JSON.stringify(extraJson).includes("evil"), JSON.stringify(extraJson));
+    check("Response never echoes a secret value",
+      !JSON.stringify(extraJson).includes("ghp_fake_for_validation_only"));
+
+    // A stored-but-wrong credential must fail cleanly, and must not leak the token.
+    const syncRes = await fetch(BASE + "/api/sync", {
+      method: "POST", headers: hdrs, body: JSON.stringify({ toolSlug: "github-copilot" }),
+    });
+    const syncJson = await syncRes.json();
+    check("Sync with an invalid credential fails cleanly, not 500",
+      syncRes.status === 200 && (syncJson.results?.[0]?.status === "failed"),
+      `status=${syncRes.status} result=${syncJson.results?.[0]?.status}`);
+    check("Sync error does not echo the token back",
+      !JSON.stringify(syncJson).includes("ghp_fake_for_validation_only"),
+      String(syncJson.results?.[0]?.error).slice(0, 80));
+
+    // Clean up the throwaway connection.
+    await fetch(BASE + "/api/connections", {
+      method: "DELETE", headers: hdrs, body: JSON.stringify({ toolSlug: "github-copilot" }),
+    });
+  } else {
+    console.log("  SKIP  authenticated admin checks (ADOPT_ADMIN_TOKEN not in this shell)");
+  }
+}
+
+console.log("\n=== 7. METHOD / SURFACE ===");
 {
   const r = await fetch(BASE + "/api/route-task", { method: "GET" });
   check("GET on a POST-only route is not 200", r.status !== 200, `status=${r.status}`);

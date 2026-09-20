@@ -1,15 +1,9 @@
 import { CONNECTORS, RESEARCHED_NOT_IMPLEMENTED } from "@/lib/connectors";
 import { getConnections, getRecentSyncRuns, getUsageProvenance, getWorkspace } from "@/lib/store";
-import { Chip, Eyebrow, Figure, PageHead, ProvenanceNote, type Tone } from "@/components/ui";
+import { ConnectionsAdmin, type ConnectorView } from "@/components/ConnectionsAdmin";
+import { Chip, Eyebrow, Figure, PageHead, ProvenanceNote } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_TONE: Record<string, Tone> = {
-  ready: "positive",
-  error: "negative",
-  disabled: "neutral",
-  unconfigured: "neutral",
-};
 
 export default async function ConnectionsPage() {
   const ws = await getWorkspace();
@@ -19,6 +13,25 @@ export default async function ConnectionsPage() {
     getUsageProvenance(ws.org.id),
   ]);
   const byslug = new Map(connections.map((c) => [c.toolSlug, c]));
+
+  // Connectors hold a `fetch` function, which cannot cross to a client
+  // component. Map to plain data, and deliberately carry no secret material.
+  const views: ConnectorView[] = CONNECTORS.map((c) => {
+    const conn = byslug.get(c.slug);
+    return {
+      slug: c.slug,
+      name: c.name,
+      vendor: c.vendor,
+      docs: c.docs,
+      requiredScopes: c.requiredScopes,
+      fields: c.fields.map((f) => ({ key: f.key, label: f.label, secret: f.secret, help: f.help })),
+      verifiedAgainstLiveTenant: c.verifiedAgainstLiveTenant,
+      status: conn?.status ?? "unconfigured",
+      lastError: conn?.lastError ?? null,
+      lastSyncedAt: conn?.lastSyncedAt ?? null,
+      configuredKeys: conn?.configuredKeys ?? [],
+    };
+  });
   const measuredShare = provenance.api + provenance.seed > 0
     ? Math.round((provenance.api / (provenance.api + provenance.seed)) * 100)
     : 0;
@@ -59,61 +72,7 @@ export default async function ConnectionsPage() {
 
       <section className="space-y-3">
         <Eyebrow>Available connectors</Eyebrow>
-        {CONNECTORS.map((c) => {
-          const conn = byslug.get(c.slug);
-          const status = conn?.status ?? "unconfigured";
-          return (
-            <article key={c.slug} className="panel p-5">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="text-sm font-medium text-ink">{c.name}</span>
-                <span className="text-xs text-dim">{c.vendor}</span>
-                <span className="ml-auto flex items-center gap-2">
-                  {!c.verifiedAgainstLiveTenant ? <Chip tone="caution">Unproven against a live tenant</Chip> : null}
-                  <Chip tone={STATUS_TONE[status] ?? "neutral"}>{status}</Chip>
-                </span>
-              </div>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <span className="eyebrow">Permissions it needs</span>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {c.requiredScopes.map((s) => (
-                      <code key={s} className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted">
-                        {s}
-                      </code>
-                    ))}
-                  </div>
-                  <a
-                    href={c.docs}
-                    className="mt-2 inline-block text-xs text-signal underline-offset-2 hover:underline"
-                  >
-                    Vendor documentation
-                  </a>
-                </div>
-
-                <div>
-                  <span className="eyebrow">What you provide</span>
-                  <ul className="mt-2 space-y-1">
-                    {c.fields.map((f) => (
-                      <li key={f.key} className="text-xs text-muted">
-                        <span className="text-ink">{f.label}</span>
-                        {f.secret ? <span className="ml-1.5 text-[10px] text-signal">encrypted at rest</span> : null}
-                        <span className="block text-dim">{f.help}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              {conn?.lastError ? (
-                <p className="mt-3 border-l-2 border-negative pl-3 text-xs text-negative">{conn.lastError}</p>
-              ) : null}
-              {conn?.lastSyncedAt ? (
-                <p className="mt-3 text-xs text-dim">Last synced {new Date(conn.lastSyncedAt).toUTCString()}</p>
-              ) : null}
-            </article>
-          );
-        })}
+        <ConnectionsAdmin connectors={views} />
       </section>
 
       {/* The honest part: vendors with a reachable endpoint that were skipped

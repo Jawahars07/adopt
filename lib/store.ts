@@ -344,3 +344,36 @@ export async function getUsageProvenance(orgId: string): Promise<{ api: number; 
     return { api: 0, seed: 0 };
   }
 }
+
+/**
+ * Save a vendor connection.
+ *
+ * Secrets are encrypted before they touch the database and are replaced
+ * wholesale rather than merged — a partial update that silently kept an old
+ * client secret alongside a new tenant id would fail at sync time with a
+ * confusing error.
+ */
+export async function saveConnection(
+  orgId: string,
+  toolSlug: ToolSlug,
+  config: Record<string, string>,
+  secrets: Record<string, string>,
+): Promise<void> {
+  if (!isDbConfigured()) throw new Error("No database configured.");
+  const { encryptSecret } = await import("./crypto");
+  const cipher = Object.keys(secrets).length ? encryptSecret(JSON.stringify(secrets)) : null;
+  await db()`
+    insert into connections (org_id, tool_slug, config, secret_cipher, status, last_error)
+    values (${orgId}, ${toolSlug}, ${JSON.stringify(config)}::jsonb, ${cipher}, 'ready', null)
+    on conflict (org_id, tool_slug) do update
+      set config = excluded.config,
+          secret_cipher = coalesce(excluded.secret_cipher, connections.secret_cipher),
+          status = 'ready',
+          last_error = null
+  `;
+}
+
+export async function deleteConnection(orgId: string, toolSlug: ToolSlug): Promise<void> {
+  if (!isDbConfigured()) throw new Error("No database configured.");
+  await db()`delete from connections where org_id = ${orgId} and tool_slug = ${toolSlug}`;
+}
