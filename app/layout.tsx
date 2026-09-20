@@ -1,48 +1,99 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Newsreader, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 
 /**
- * Every route renders per-request so the Content-Security-Policy nonce minted in
- * proxy.ts is actually stamped onto Next's scripts. Next only injects the nonce
- * during a dynamic render; on a prerendered page the header carries a nonce that
- * matches nothing, 'strict-dynamic' then voids the 'self' allowance, and every
- * script on the page is blocked — the app loads as dead HTML.
+ * Fonts are self-hosted by next/font at build time rather than pulled from
+ * Google. That keeps `font-src 'self'` and `style-src 'self'` intact in the CSP
+ * set by proxy.ts — loading them from a CDN would mean widening the policy for
+ * the sake of two stylesheets.
  *
- * The trade is cheap here: these are client components that hydrate and then read
- * their state from localStorage, so a prerender only ever produced an empty shell.
+ * The pairing is the design thesis: an editorial serif carrying the figures,
+ * against an engineering sans and mono carrying the data. An audit report
+ * rendered as an instrument.
+ */
+const display = Newsreader({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-display",
+  display: "swap",
+});
+const sans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-sans",
+  display: "swap",
+});
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-mono",
+  display: "swap",
+});
+
+/**
+ * Every route renders per-request so the Content-Security-Policy nonce minted in
+ * proxy.ts is actually stamped onto Next's scripts. On a prerendered page the
+ * header carries a nonce that matches nothing, 'strict-dynamic' then voids the
+ * 'self' allowance, and every script on the page is blocked — the app loads as
+ * dead HTML with a clean build behind it. Learned the hard way.
  */
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Adopt — GenAI Adoption Companion",
+  title: "Adopt — AI stack control plane",
   description:
-    "Turn an everyday work task into a qualified GenAI use case, a ready-to-use Copilot prompt, an adoption guide, and tracked feedback.",
+    "Route work to the right AI tool across your whole licensed stack, learn from what gets abandoned, and find the seats that are not earning their keep.",
 };
+
+const NAV = [
+  { href: "/", label: "Route", hint: "Find the right tool for a task" },
+  { href: "/ledger", label: "Ledger", hint: "What is working, and what to do about it" },
+  { href: "/stack", label: "Stack", hint: "Seats, cost and coverage" },
+  { href: "/shadow", label: "Shadow", hint: "Work leaving the licensed stack" },
+];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>
-        <header className="border-b border-black/5 bg-white/70 backdrop-blur">
-          <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
-            <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
-              <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent text-white">A</span>
-              Adopt
+    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+      <body className="min-h-screen">
+        <header className="sticky top-0 z-30 border-b border-hairline bg-canvas/85 backdrop-blur">
+          <div className="mx-auto flex max-w-content items-center gap-6 px-5 py-3">
+            <Link href="/" className="flex items-baseline gap-2">
+              <span className="display text-lg font-semibold text-ink">Adopt</span>
+              <span className="hidden text-[11px] text-dim sm:inline">AI stack control plane</span>
             </Link>
-            <nav className="flex items-center gap-1 text-sm font-medium">
-              <Link href="/" className="rounded-lg px-3 py-1.5 hover:bg-black/5">New use case</Link>
-              <Link href="/playbook" className="rounded-lg px-3 py-1.5 hover:bg-black/5">Playbook</Link>
-              <Link href="/dashboard" className="rounded-lg px-3 py-1.5 hover:bg-black/5">Dashboard</Link>
+
+            <nav className="ml-auto flex items-center gap-0.5">
+              {NAV.map((n) => (
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  title={n.hint}
+                  className="rounded-md px-3 py-1.5 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+                >
+                  {n.label}
+                </Link>
+              ))}
             </nav>
           </div>
         </header>
-        <main className="mx-auto max-w-5xl px-5 py-10">{children}</main>
-        <footer className="mx-auto max-w-5xl px-5 pb-10 pt-4 text-xs text-black/40">
-          Adopt · a GenAI adoption companion · built by{" "}
-          <a className="underline hover:text-black/70" href="https://github.com/Jawahars07">
-            Jawahar Naidu
-          </a>
+
+        <main className="mx-auto max-w-content px-5 py-8">{children}</main>
+
+        <footer className="mx-auto max-w-content border-t border-hairline px-5 py-6">
+          <p className="text-xs leading-relaxed text-dim">
+            Adopt · built by{" "}
+            <a
+              href="https://github.com/Jawahars07"
+              className="text-muted underline-offset-2 hover:text-signal hover:underline"
+            >
+              Jawahar Naidu
+            </a>
+            . Capability scores and seat prices in the tool catalog are illustrative figures for
+            modelling, not vendor-published pricing.
+          </p>
         </footer>
       </body>
     </html>

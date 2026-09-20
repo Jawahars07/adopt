@@ -55,7 +55,7 @@ export const BLOCKERS: BlockerDef[] = [
     hint: "It got there eventually, but rewriting it ate the time saved.",
     structural: false,
     intervention:
-      "Prompt problem, not a tool problem. Run the evaluator-optimizer on the saved prompt — add an explicit output format and an instruction to flag uncertainty, then re-test on the same task.",
+      "Execution problem, not a tool problem. Tighten the prompt first — an explicit output format and an instruction to flag uncertainty. If a second tool in the stack scores higher for this category, re-route before rewriting again.",
   },
   {
     id: "workflow",
@@ -63,7 +63,7 @@ export const BLOCKERS: BlockerDef[] = [
     hint: "Wrong app, too many steps, or it broke my flow to use it.",
     structural: false,
     intervention:
-      "Surface problem. The task is a good GenAI fit but it was routed to the wrong place — re-qualify it against a different Copilot surface, or make it a Copilot Studio agent so it runs inside the existing process instead of beside it.",
+      "Routing problem. The task suits AI but landed in the wrong place — the tool sits beside the work instead of inside it. Re-route to a tool that reaches the system where the work already happens, or make it an agent that runs in that process.",
   },
   {
     id: "trust",
@@ -71,7 +71,7 @@ export const BLOCKERS: BlockerDef[] = [
     hint: "I had to check everything, so I might as well have done it myself.",
     structural: true,
     intervention:
-      "Verification cost exceeds the drafting saving. This is only worth keeping where a human already reviews the output as part of the process. If the task is high-stakes and unreviewed, stop promoting it.",
+      "Verification cost exceeds the drafting saving. Worth keeping only where a human already reviews the output as part of the process. If the task is high-stakes and unreviewed, stop promoting it — and check whether a tool grounded in your own systems would remove the doubt.",
   },
   {
     id: "data",
@@ -79,7 +79,7 @@ export const BLOCKERS: BlockerDef[] = [
     hint: "Confidential, personal, or the model couldn't reach the right source.",
     structural: true,
     intervention:
-      "Governance blocker, not an adoption blocker. Ungoverned data is the most common reason rollouts stall. Escalate to whoever owns data classification — do not push this use case again until the source question is answered.",
+      "Governance blocker, not an adoption blocker. Either the material is not cleared for this tool or the tool cannot reach the source. Check whether another licensed tool is already approved for this data class before escalating — the answer is often a re-route, not a policy change.",
   },
   {
     id: "speed",

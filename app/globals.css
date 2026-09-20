@@ -2,32 +2,216 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Adopt — design tokens.
+ *
+ * Direction: an audit instrument, not a SaaS dashboard. The product's own word
+ * for its core artifact is "ledger", so the vocabulary comes from accounting —
+ * ruled columns, aligned figures, a reconciliation that does not balance. The
+ * signature is that imbalance: seats bought set against seats earned, with the
+ * gap as the whole message.
+ *
+ * Colour: true blue-greys rather than black, with elevation carried by small
+ * background shifts instead of borders wherever possible. The accent is brass —
+ * ledger hardware, warm against cold greys. Deliberately not the acid green or
+ * vermilion that dark AI dashboards default to.
+ *
+ * Every value here is a token. Components never hardcode a hex. (CONVENTIONS.md)
+ */
+
 :root {
-  color-scheme: light;
+  /* Surfaces, in ascending elevation. */
+  --canvas: #0b0d11;
+  --surface: #12151b;
+  --surface-2: #181c24;
+  --surface-3: #1f242e;
+
+  /* Rules. The hairline is doing the work a border-radius usually does. */
+  --hairline: #242a35;
+  --hairline-strong: #333b49;
+
+  /* Type. Weights read heavier on dark, so the ramp is tuned downward. */
+  --text: #e9ecf1;
+  --text-muted: #98a1b0;
+  --text-dim: #5f6a7a;
+
+  /* Brass: the single accent. Used for the figure that matters and nothing else. */
+  --signal: #d4a63c;
+  --signal-dim: #8a6d28;
+  --signal-wash: rgba(212, 166, 60, 0.08);
+
+  /* Verdict semantics. Fixed across the product — never restyled per component. */
+  --positive: #4e9a7c;
+  --positive-wash: rgba(78, 154, 124, 0.1);
+  --caution: #c9913f;
+  --caution-wash: rgba(201, 145, 63, 0.1);
+  --negative: #c4564b;
+  --negative-wash: rgba(196, 86, 75, 0.1);
+  --neutral: #5f6a7a;
+  --neutral-wash: rgba(95, 106, 122, 0.1);
+
+  --radius: 6px;
+}
+
+* {
+  border-color: var(--hairline);
+}
+
+html {
+  background: var(--canvas);
+  color-scheme: dark;
 }
 
 body {
-  @apply bg-paper text-ink antialiased;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv05" 1, "ss01" 1;
 }
 
-/* Subtle card + input primitives reused across pages */
+/* Figures must align. A ledger whose columns drift is not a ledger. */
+.num {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: -0.01em;
+}
+
+/* The display face carries the big figures — an audit report, not a KPI tile. */
+.display {
+  font-family: var(--font-display), Georgia, serif;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.02em;
+}
+
 @layer components {
-  .card {
-    @apply rounded-2xl border border-black/5 bg-white shadow-sm;
+  .eyebrow {
+    @apply text-[11px] font-medium uppercase tracking-[0.14em] text-dim;
   }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+  }
+
+  .panel-inset {
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+  }
+
+  /* Dense rows, Linear-style: the table is the interface. */
+  .row {
+    @apply flex items-center gap-4 px-4 transition-colors;
+    min-height: 44px;
+    border-top: 1px solid var(--hairline);
+  }
+  .row:hover {
+    background: var(--surface-2);
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium;
+  }
+
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors;
+    border: 1px solid var(--hairline-strong);
+    color: var(--text);
   }
-  .btn-primary {
-    @apply btn bg-accent text-white hover:bg-indigo-700 disabled:opacity-50;
+  .btn:hover {
+    background: var(--surface-2);
   }
-  .btn-ghost {
-    @apply btn border border-black/10 bg-white text-ink hover:bg-black/5;
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-40;
   }
-  .label {
-    @apply text-xs font-semibold uppercase tracking-wide text-black/50;
+
+  .btn-signal {
+    background: var(--signal);
+    border-color: var(--signal);
+    color: #1a1508;
   }
-  .input {
-    @apply w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20;
+  .btn-signal:hover {
+    background: #e0b44c;
+  }
+
+  .field {
+    @apply w-full rounded-md px-3 py-2.5 text-sm outline-none transition-colors;
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    color: var(--text);
+  }
+  .field::placeholder {
+    color: var(--text-dim);
+  }
+  .field:focus {
+    border-color: var(--signal-dim);
+    background: var(--surface-3);
+  }
+
+  /* The signature element: a reconciliation rule that shows the shortfall. */
+  .reconcile {
+    position: relative;
+    height: 6px;
+    background: var(--surface-3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .reconcile-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--positive);
+  }
+  .reconcile-gap {
+    position: absolute;
+    inset: 0 0 0 auto;
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--negative-wash),
+      var(--negative-wash) 3px,
+      transparent 3px,
+      transparent 6px
+    );
+    border-left: 1px solid var(--negative);
+  }
+}
+
+/* Focus must stay visible — keyboard users navigate a table like this. */
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: var(--signal-wash);
+  color: var(--text);
+}
+
+/* Scrollbars, quieted rather than hidden. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--canvas);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 5px;
+  border: 2px solid var(--canvas);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--hairline-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

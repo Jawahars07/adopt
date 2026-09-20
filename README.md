@@ -1,155 +1,135 @@
-# Adopt — GenAI Adoption Companion 🧭
+# Adopt — AI stack control plane
 
-Turn an everyday work task into a **qualified GenAI use case**: a fit score, the right
-Microsoft 365 Copilot tool, a ready-to-paste prompt, a plain-language adoption guide,
-and feedback that rolls up into an **adoption dashboard**.
+Most organisations now run several AI tools at once: Copilot and ChatGPT
+Enterprise and Claude and Gemini and Slack AI and a coding assistant, bought by
+different departments in different quarters. Nobody told anyone which tool does
+what, nobody knows which ones earn their seats, and work quietly leaks to
+personal accounts.
 
-Built to mirror the real loop of driving GenAI adoption inside a large organisation:
-**identify → qualify → enable → adopt → measure → learn.**
+Adopt is the layer in between. It **routes a task to the right tool in the stack
+you already pay for**, **learns from what gets abandoned**, and turns both into
+**seat decisions with a euro figure attached**.
 
-> Works with **no API key** out of the box (offline demo engine), so you can try the
-> full flow instantly. Add an Anthropic key for live model analysis.
+**Live:** https://adopt-eight.vercel.app
 
-## What makes it defensible (not just an AI wrapper)
+---
 
-A single LLM call is replicable by anyone in an afternoon. Adopt's value is that it
-**learns from rejection** — and that is a position the whole market has left open.
+## The problem, in three numbers
 
-### The gap in the market
+| | |
+|---|---|
+| **60%** of AI users run the same prompt through several tools because nobody told them which to use. 77% use multiple tools weekly; a third use four or more. | [Glean Work AI Institute, 6,000 workers](https://www.businessinsider.com/welcome-age-ai-sprawl-too-many-tools-2026-6) |
+| **67%** of US workers use unapproved AI tools. Shadow AI now factors into **43%** of AI-related security incidents, double the year before. | [IBM / UpGuard](https://www.questa-ai.com/privacy-cafe/shadow-ai-the-biggest-data-risk-in-2026) |
+| **36%** of ChatGPT Enterprise seats sit unused. 32% for GitHub Copilot, ~40% for M365 Copilot. A 50,000-seat enterprise wastes **$13M a year**. | [Torii / Zylo / Larridin](https://zylo.com/blog/ai-cost) |
 
-Every adoption tool measures the same thing: **usage**. Microsoft's Copilot Dashboard in
-Viva Insights, the [Analytics Hub](https://microsoft.github.io/Analytics-Hub/) Power BI
-templates and the M365 admin reports all count active users, feature utilisation, licence
-utilisation and assisted hours. The digital-adoption platforms — WalkMe, Whatfix, Pendo,
-Lemon Learning — layer guided walkthroughs on the same counters. Lemon Learning names the
-gap in [its own marketing](https://lemonlearning.com/blog/measuring-copilot-adoption-beyond-licences):
-those dashboards *"cannot reveal where users get stuck."*
+These are not three problems. They are one causal chain that nothing currently
+instruments: people shadow-use a tool because the sanctioned one was wrong for
+their task, and seats go unused because the tool never fit the work those people
+actually have.
 
-That gap is where the money goes. 88% of AI pilots never reach production. **40.7% of
-organisations cancelled a GenAI assistant rollout in 2026**, up from 31.7% in 2025
-([AvePoint](https://www.avepoint.com/blog/strategy-blog/why-ai-pilots-fail)). Gartner has
-42% abandoning most AI initiatives. And 84% of failures trace to a *decision*, not to the
-technology.
+## Why existing tools cannot close it
 
-A usage dashboard reports the symptom — the line went down. It cannot say why, because it
-never captured a reason, so the only available response is more training and more nudges.
+The market splits into three camps that do not talk to each other:
 
-### What Adopt does instead
+- **Governance and security** (CloudEagle, Netskope) finds shadow AI and blocks it.
+- **Spend management** (Zylo, Torii) counts dead seats.
+- **Enablement** (WalkMe, Whatfix, Lemon Learning) trains people.
 
-| Mechanism | What it does |
-|-----------|--------------|
-| 🧾 **Abandonment Ledger** | Captures **why** a use case was rejected against a fixed blocker taxonomy, then rules on each pattern: **scale it, fix it, or stop.** See `lib/blockers.ts`. |
-| 🧠 **Living Playbook** | Every qualified task + its feedback becomes a reusable entry, ranked by real adoption success. See `/playbook`. |
-| 🔁 **Feedback-weighted retrieval** | New tasks retrieve the *proven* plays colleagues actually adopted and rated highly (`lib/playbook.ts`). |
-| ⚙️ **Evaluator–Optimizer** | A poorly-rated prompt is critiqued and **rewritten automatically** (`/api/improve`) — the [evaluator-optimizer pattern](https://www.agentpatterns.ai/agent-design/evaluator-optimizer/). |
+None of them connects the employee's task to the right tool, and none feeds that
+evidence back into the seat decision. Lemon Learning concedes the gap in [its own
+marketing](https://lemonlearning.com/blog/measuring-copilot-adoption-beyond-licences):
+usage dashboards *"cannot reveal where users get stuck."*
 
-**The split that matters is FIX vs KILL.** Two use cases can have identical adoption rates
-and deserve opposite responses: one was abandoned because the prompt was sloppy (fixable),
-the other because the data is confidential (structural). A usage dashboard sees one number
-and cannot tell them apart. Adopt refuses to offer a prompt rewrite for a structural
-blocker, and says so on screen:
+## The four surfaces
 
-> **Stop** — Turn my weekly team meeting notes into clear action items · Copilot in Microsoft Teams
-> Only 0/4 adopted (0%), and 100% of the rejections are "I couldn't use it with this data"
-> — a property of the task, not of the prompt.
-> **Do next:** Governance blocker, not an adoption blocker. Escalate to whoever owns data
-> classification — do not push this use case again until the source question is answered.
+| Surface | Who it is for | What it answers |
+|---------|---------------|-----------------|
+| **Route** | anyone | "Which of our tools should do this?" — with the reasoning shown, a policy check on the material, and an honest refusal when the stack has nothing good. |
+| **Ledger** | AI CoE / IT | "What is the evidence telling us?" — scale, fix, **migrate**, or stop, per tool and task category. |
+| **Stack** | CIO / procurement | "What does this cost and what does it return?" — seat utilisation against task adoption, overlap detection, reclaimable seats in euros. |
+| **Shadow** | CISO / CoE | "Where is work leaving, and whose fault is that?" — unapproved use recorded as a routing failure with a cause. |
 
-Recommending **stop** is the point. No vendor whose revenue depends on seat expansion will
-ever tell a customer to use less of the product.
+### The verdict that makes it a product
 
-**Scaling note:** persistence is client-side (`localStorage`) so the demo runs free and
-private. The documented upgrade to make the ledger *org-wide* is a one-component swap:
-vector embeddings + a shared store (Vercel KV / Postgres).
+**MIGRATE** is only computable because an organisation runs several tools at
+once. When one tool is being abandoned for a category and another *already
+licensed* tool is demonstrably winning it, the answer is neither more training
+nor abandonment:
 
-## What it does
+> **Migrate** · Microsoft 365 Copilot · Writing and documents
+> Copilot holds **18%** adoption across 17 attempts here, while Claude Enterprise
+> holds **92%** across 24. You already pay for both.
+> **Do next.** Re-route writing and documents to Claude. No procurement needed —
+> this is a routing change, not a purchase.
 
-| Step | In the app | The adoption job it maps to |
-|------|------------|------------------------------|
-| **Qualify** | Scores GenAI fit (0–100), impact vs. effort, and flags sensitive-data risk | Use-case identification & qualification with real users |
-| **Recommend** | Picks the right surface — Copilot in Outlook / Teams / Word / Excel / PowerPoint, or a Copilot Studio agent | Designing & deploying GenAI assistants and agents |
-| **Enable** | Generates a step-by-step guide for non-technical users + a ready-to-paste prompt | Adoption content (guides, demos, tutorials) & upskilling |
-| **Measure** | Captures rating, "adopted?", and pain points → dashboard with adoption rate and top blockers | Capturing feedback, usage pain points, improvement opportunities |
+A single-vendor dashboard cannot produce that sentence. It has nothing to
+compare against.
+
+### Shadow AI as a buy signal
+
+Every governance product treats unapproved tool use as a violation to detect and
+block. Adopt records it as evidence: the person had a real task, the licensed
+stack turned them away, and they solved it anyway. The headline number is the
+share of shadow use caused by **a gap the organisation created** — no licensed
+tool, or one blocked by policy. When that number is high, the remedy is a
+purchase order, not a warning email.
+
+That share is *recorded at the moment the router turned someone away*, never
+reconstructed afterwards.
 
 ## Stack
 
-- **Next.js 16** (App Router) · **React 19** · **TypeScript** · **Tailwind CSS**
-- **Model-agnostic** — no vendor SDK. A pluggable LLM layer (`lib/llm.ts`) runs on a free
-  local model (**Ollama**), any **OpenAI-compatible** endpoint (**Groq free tier**, OpenRouter,
-  LM Studio, vLLM), or Claude — all over plain `fetch`. Default is a fully **offline heuristic**.
-- Client-side storage (`localStorage`) — no database, deploys anywhere static-ish
+- **Next.js 16** (App Router) · React 19 · TypeScript · Tailwind
+- **Neon Postgres** over `@neondatabase/serverless`. No ORM — parameterised SQL.
+  Without `DATABASE_URL` the app runs a seeded demo organisation from memory, and
+  says so on screen.
+- **Routing is deterministic.** No model call, so it cannot be prompt-injected,
+  cannot fail because a provider is down, and every recommendation carries the
+  reasons that produced it. A model is used only by `/api/improve`.
 
 ```
-adopt/
-├── app/
-│   ├── page.tsx              # intake → qualification → guide → prompt → feedback
-│   ├── dashboard/page.tsx    # adoption metrics, top tools, pain points
-│   ├── api/analyze/route.ts  # Anthropic call + demo fallback
-│   └── layout.tsx, globals.css
-│   ├── api/improve/route.ts  # evaluator-optimizer loop
-│   └── layout.tsx, globals.css
-├── lib/
-│   ├── blockers.ts           # blocker taxonomy + scale/fix/kill verdicts
-│   ├── guard.ts              # validation, sanitisation, fencing, rate limiting
-│   ├── playbook.ts           # retrieval + idempotent playbook rebuild
-│   ├── demo.ts               # offline heuristic engine (no key needed)
-│   └── types.ts
-├── proxy.ts                  # nonce-based CSP
-└── tests/security.mjs        # adversarial suite
+app/            page.tsx (Route) · ledger · stack · shadow · api/
+lib/  catalog.ts     10 tools, capability profiles, task taxonomy
+      routing.ts     classification, scoring, gap detection
+      analytics.ts   ledger verdicts, seat economics, shadow attribution
+      blockers.ts    why work gets abandoned, structural vs fixable
+      demo-org.ts    deterministic synthetic organisation
+      guard.ts       validation, sanitisation, rate limiting
+      db.ts store.ts Postgres, with an in-memory fallback
+db/   schema.sql · seed.mjs
+tests/ routing.test.ts · security.mjs · e2e.mjs
 ```
 
 ## Run it
 
 ```bash
 npm install
-cp .env.example .env.local     # optional — add ANTHROPIC_API_KEY for live analysis
-npm run dev                    # http://localhost:3000
+npm run dev                     # works immediately on seeded demo data
+
+# optional — persist to Postgres
+cp .env.example .env.local      # add DATABASE_URL from neon.tech
+npm run db:setup                # idempotent: schema + demo organisation
 ```
 
-No key? It runs in **demo mode** and every result is flagged as such.
-
-## Deploy
-
-One click on **Vercel** — set `ANTHROPIC_API_KEY` as an environment variable (or leave it
-unset to ship the demo).
-
-## How the model is used
-
-A single structured call returns a JSON adoption package. The system prompt forces honesty —
-poor-fit tasks score low, and sensitive-data tasks are flagged with a reduced score. Set
-`LLM_PROVIDER` (see `.env.example`) to choose the backend; with nothing set it runs the
-offline heuristic. **Any provider failure falls back to the heuristic**, so it never breaks.
-
-```
-LLM_PROVIDER=demo     # offline heuristic (default) — $0, no account, no network
-LLM_PROVIDER=ollama   # local model on your machine — free & private
-LLM_PROVIDER=openai   # Groq free tier / OpenRouter / LM Studio / OpenAI
-LLM_PROVIDER=anthropic# Claude (optional)
-```
-
-## Security
-
-Adopt forwards untrusted input to a language model, so it is treated as an LLM
-application, not just a web app. Full write-up in **[SECURITY.md](SECURITY.md)**.
-
-- **Prompt injection (OWASP LLM01)** — the client POSTs its own playbook and entries reach
-  the model prompt. Every field is validated, instruction-shaped text is defanged, invisible
-  characters are stripped, and untrusted content is delimiter-fenced as data.
-- **Output handling (LLM05)** — model JSON is re-validated field by field before it reaches
-  React, instead of being cast and trusted.
-- **Unbounded consumption (LLM10)** — 256 KB body ceiling checked before parsing, input caps,
-  and per-IP rate limits on both model routes.
-- **Nonce-based CSP** with `strict-dynamic` and **no `unsafe-inline` in `script-src`**, plus
-  HSTS, `frame-ancestors 'none'`, and `no-store` on `/api/*`.
-- **0 npm vulnerabilities.**
+## Verification
 
 ```bash
-npm run build && npm start
-npm run test:security     # 22/22 — adversarial, zero dependencies
+npm run test:routing    # 36/36 — classification, policy gates, gap detection
+npm run test:security   # 23/23 — adversarial, zero dependencies
+npm run test:e2e        # 30/30 — real browser, all four surfaces
 ```
 
-The suite actually attacks the app: it attempts the injection, forges adoption stats,
-smuggles zero-width characters, posts oversized bodies and floods the rate limiter.
+Security posture is documented in **[SECURITY.md](SECURITY.md)**: nonce-based
+CSP with no `unsafe-inline`, per-IP rate limits, input caps checked before
+parsing, output validation, and 0 npm vulnerabilities.
+
+## Honesty
+
+Capability scores and seat prices in the catalog are **illustrative figures for
+modelling**, not vendor-published pricing — stated in the UI footer and in
+`lib/catalog.ts`. The demo organisation is **synthetic**, flagged `is_demo` in
+the database, and every surface that renders it carries a visible marker. Seeded
+numbers are never presented as measured telemetry.
 
 ---
 
