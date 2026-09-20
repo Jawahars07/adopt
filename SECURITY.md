@@ -63,9 +63,15 @@ nothing, but it is the inner layer of a defense-in-depth setup, not the boundary
 The authoritative limit belongs at the edge, where it runs before a function is ever
 invoked (and Vercel does not bill for WAF-blocked traffic):
 
+**Status: APPLIED 2026-09-20** — rule `rule_rate_limit_adopt_api_0k2kpx`, `/api` prefix, 100 req / 60s
+keyed on IP. **Currently in `log` mode**: it observes and throttles nothing, which is the correct first
+step before enforcing against real traffic.
+
 ```bash
-# Stage in log mode first and watch real traffic before enforcing.
+# Note: firewall commands need the team scope explicitly. Without --scope the CLI
+# fails with a misleading "The specified token is not valid" — a scope problem, not auth.
 vercel firewall rules add "Rate limit Adopt API" \
+  --scope <team-slug> \
   --condition '{"type":"path","op":"pre","value":"/api"}' \
   --action rate_limit \
   --rate-limit-window 60 \
@@ -73,11 +79,13 @@ vercel firewall rules add "Rate limit Adopt API" \
   --rate-limit-keys ip \
   --rate-limit-action log \
   --yes
-vercel firewall publish --yes
+vercel firewall publish --scope <team-slug> --yes
 ```
 
-Once the dashboard shows the legitimate rate, re-run with
-`--rate-limit-action deny`. Note that WAF counters are **per region**, so N regions can
+Once the dashboard shows the legitimate rate, edit the rule to
+`--rate-limit-action deny`. On the Hobby plan `vercel firewall overview` returns 402 because
+IP Bypass is Pro-only, but `rules ls` / `rules add` / `publish` work — custom WAF rules are
+available on Hobby. Note that WAF counters are **per region**, so N regions can
 collectively exceed the configured limit by about N×.
 
 **2. Prompt-injection defense is mitigation, not proof.**
