@@ -11,7 +11,8 @@
     "test:e2e": "node tests/e2e.mjs",
     "test:routing": "rm -rf .tsbuild && tsc lib/catalog.ts lib/routing.ts tests/routing.test.ts --module commonjs --target es2022 --moduleResolution node --outDir .tsbuild --skipLibCheck && node .tsbuild/tests/routing.test.js",
     "db:setup": "node --env-file-if-exists=.env.local db/seed.mjs",
-    "test:connectors": "rm -rf .tsbuild && tsc lib/catalog.ts lib/crypto.ts lib/connectors/*.ts tests/connectors.test.ts --module commonjs --target es2022 --moduleResolution node --rootDir . --outDir .tsbuild --skipLibCheck && node .tsbuild/tests/connectors.test.js"
+    "test:connectors": "rm -rf .tsbuild && tsc lib/catalog.ts lib/crypto.ts lib/connectors/*.ts tests/connectors.test.ts --module commonjs --target es2022 --moduleResolution node --rootDir . --outDir .tsbuild --skipLibCheck && node .tsbuild/tests/connectors.test.js",
+    "test:contract": "node --env-file-if-exists=.env.local tests/contract.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

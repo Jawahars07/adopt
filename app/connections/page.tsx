@@ -72,6 +72,14 @@ export default async function ConnectionsPage() {
 
       <section className="space-y-3">
         <Eyebrow>Available connectors</Eyebrow>
+        <p className="max-w-3xl text-sm leading-relaxed text-muted">
+          Two different things can be verified, and conflating them would be dishonest.{" "}
+          <span className="text-positive">Endpoints are verified live</span> — `npm run test:contract` calls
+          every one of these with a deliberately invalid credential and confirms it resolves, serves the path,
+          accepts the request shape and rejects only on the credential. No endpoint here is guessed.{" "}
+          <span className="text-caution">Response bodies under real data are not verified</span> — that needs a
+          tenant, so every connector below still reports unproven.
+        </p>
         <ConnectionsAdmin connectors={views} />
       </section>
 

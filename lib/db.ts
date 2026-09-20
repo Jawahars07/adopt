@@ -1,4 +1,25 @@
-import { neon } from "@neondatabase/serverless";
+import { neon, neonConfig } from "@neondatabase/serverless";
+
+/**
+ * Pin the HTTP endpoint to the connection hostname.
+ *
+ * The driver's default rewrites the FIRST hostname label to "api." — for
+ * `ep-xxx.eu-central-1.aws.neon.tech` that yields `api.eu-central-1...`, which
+ * is a real host. Newer Neon connection strings carry a compute segment
+ * (`ep-xxx.c-6.eu-central-1...`), and the same rewrite yields
+ * `api.c-6.eu-central-1...`, which resolves intermittently and then stops:
+ * observed working for several hours, then ENOTFOUND, taking every query with it.
+ *
+ * I initially diagnosed the first failure as a free-tier cold start and
+ * declined to add this override on the grounds that it would be a permanent
+ * workaround for a transient fault. That was wrong. The cold start was real and
+ * coincidental; the rewrite is the actual defect.
+ *
+ * Posting to the connection host itself is what the vendor's own service
+ * answers — verified returning 200 with real rows on both the direct and pooled
+ * hostnames. tests/contract.mjs guards it.
+ */
+neonConfig.fetchEndpoint = (host) => `https://${host}/sql`;
 
 /**
  * Database access. Everything goes through here — no component or route imports
