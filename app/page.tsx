@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { tokenize } from "@/lib/playbook";
+import { rebuildPlaybook } from "@/lib/playbook";
+import { BLOCKERS, BLOCKER_BY_ID, isBlockerId } from "@/lib/blockers";
 import type { Analysis, StoredUseCase, PlaybookEntry, Improvement } from "@/lib/types";
 
 const EXAMPLES = [
@@ -40,39 +41,16 @@ function loadLearned(): PlaybookEntry[] {
   }
 }
 
-/** Fold a piece of feedback into the Living Playbook — this is the flywheel. */
-function learnFromFeedback(c: StoredUseCase) {
-  const all = loadLearned();
-  const id = `learned-${c.recommendedTool}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  const existing = all.find((e) => e.id === id);
-  const rated = typeof c.rating === "number";
-  if (existing) {
-    existing.totalCount += 1;
-    if (c.adopted) existing.adoptedCount += 1;
-    if (rated) {
-      const n = existing.ratingCount || 0;
-      existing.avgRating = (existing.avgRating * n + c.rating!) / (n + 1);
-      existing.ratingCount = n + 1;
-    }
-    // Keep the most recent successful prompt as the canonical one.
-    if (c.adopted) existing.prompt = c.prompt;
-    existing.updatedAt = Date.now();
-  } else {
-    all.unshift({
-      id,
-      pattern: c.title,
-      keywords: Array.from(new Set([...tokenize(c.task), ...tokenize(c.title)])).slice(0, 12),
-      recommendedTool: c.recommendedTool,
-      prompt: c.prompt,
-      adoptedCount: c.adopted ? 1 : 0,
-      totalCount: 1,
-      avgRating: rated ? c.rating! : 0,
-      ratingCount: rated ? 1 : 0,
-      origin: "learned",
-      updatedAt: Date.now(),
-    });
-  }
-  localStorage.setItem(PLAYBOOK_KEY, JSON.stringify(all.slice(0, 100)));
+/**
+ * Fold feedback into the Living Playbook — this is the flywheel.
+ *
+ * The playbook is recomputed from the stored cases rather than incremented, so
+ * rating a case and then marking it adopted counts it once, not twice. See
+ * rebuildPlaybook in lib/playbook.ts for why that mattered.
+ */
+function learnFromFeedback() {
+  const entries = rebuildPlaybook(loadStore(), loadLearned());
+  localStorage.setItem(PLAYBOOK_KEY, JSON.stringify(entries));
 }
 
 const IMPACT_COLOR: Record<string, string> = {
@@ -122,8 +100,8 @@ export default function Home() {
     if (!result) return;
     const updated = { ...result, ...patch };
     setResult(updated);
-    saveCase(updated);
-    learnFromFeedback(updated); // ← feed the flywheel
+    saveCase(updated); // must persist first — the rebuild reads from storage
+    learnFromFeedback(); // ← feed the flywheel
     setSaved(true);
   }
 
@@ -347,8 +325,51 @@ export default function Home() {
             />
             {saved && <p className="mt-2 text-xs text-emerald-600">Saved — and folded into the living playbook.</p>}
 
-            {/* Evaluator-Optimizer: offered when the prompt underperformed */}
-            {typeof result.rating === "number" && result.rating <= 3 && (
+            {/* The negative signal. A usage dashboard records that this was abandoned;
+                only a recorded REASON makes the abandonment diagnosable later. */}
+            {result.adopted === false && (
+              <div className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] p-4">
+                <span className="label">What stopped you?</span>
+                <p className="mt-1 text-xs text-black/50">
+                  This is the question adoption dashboards never ask — it turns &quot;usage went down&quot;
+                  into something you can act on.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {BLOCKERS.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => recordFeedback({ blocker: b.id })}
+                      className={`rounded-xl border p-3 text-left transition ${
+                        result.blocker === b.id
+                          ? "border-accent bg-accent/5"
+                          : "border-black/10 hover:bg-black/5"
+                      }`}
+                    >
+                      <span className="block text-sm font-medium text-black/80">{b.label}</span>
+                      <span className="mt-0.5 block text-xs text-black/45">{b.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* A structural blocker is a property of the task, not the prompt. Offering
+                a rewrite here would be the dishonest answer, so the tool refuses and
+                names the real intervention instead. */}
+            {isBlockerId(result.blocker) && BLOCKER_BY_ID[result.blocker].structural && (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4">
+                <span className="label text-rose-700">Rewriting the prompt will not fix this</span>
+                <p className="mt-1 text-sm text-black/75">
+                  {BLOCKER_BY_ID[result.blocker].intervention}
+                </p>
+              </div>
+            )}
+
+            {/* Evaluator-Optimizer: offered when the prompt underperformed AND the
+                recorded blocker is actually prompt-fixable. */}
+            {typeof result.rating === "number" &&
+              result.rating <= 3 &&
+              !(isBlockerId(result.blocker) && BLOCKER_BY_ID[result.blocker].structural) && (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
                 <p className="text-sm text-amber-800">
                   Low rating noted. Adopt can rewrite this prompt to fix what didn&apos;t work.

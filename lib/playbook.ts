@@ -150,3 +150,70 @@ export function retrieve(task: string, entries: PlaybookEntry[], limit = 2): Pro
     origin: e.origin,
   }));
 }
+
+/**
+ * Rebuild the learned playbook from the recorded use cases.
+ *
+ * This replaces an incremental `totalCount += 1` that ran on every feedback
+ * interaction. Rating a use case, then marking it adopted, then naming a blocker
+ * counted the SAME use case three times, so a handful of cases inflated into
+ * dozens of "attempts" and every adoption rate was wrong. Since the flywheel is
+ * the whole defensibility claim, a miscounted flywheel is worse than none.
+ *
+ * Deriving the aggregates from the stored cases makes the operation idempotent:
+ * replaying the same feedback any number of times yields the same numbers.
+ * Cases are capped at 100 client-side, so the recompute stays cheap.
+ */
+export function rebuildPlaybook(
+  cases: Array<{
+    recommendedTool: string;
+    title: string;
+    task: string;
+    prompt: string;
+    adopted?: boolean;
+    rating?: number;
+    createdAt: number;
+  }>,
+  previous: PlaybookEntry[] = [],
+): PlaybookEntry[] {
+  const prevById = new Map(previous.map((e) => [e.id, e]));
+  const groups = new Map<string, typeof cases>();
+
+  for (const c of cases) {
+    // Only cases that actually carry feedback are evidence. An un-reviewed case
+    // is not a failed one, and counting it as an attempt would understate adoption.
+    if (c.adopted === undefined && typeof c.rating !== "number") continue;
+    const id = `learned-${c.recommendedTool}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const list = groups.get(id) ?? [];
+    list.push(c);
+    groups.set(id, list);
+  }
+
+  const rebuilt: PlaybookEntry[] = [];
+  for (const [id, list] of groups) {
+    const sorted = [...list].sort((a, b) => b.createdAt - a.createdAt);
+    const ratings = sorted.map((c) => c.rating).filter((r): r is number => typeof r === "number");
+    const newest = sorted[0];
+    // The canonical prompt is the most recent one that actually got adopted;
+    // failing that, the most recent attempt.
+    const canonical = sorted.find((c) => c.adopted === true) ?? newest;
+
+    rebuilt.push({
+      id,
+      pattern: newest.title,
+      keywords: Array.from(
+        new Set([...tokenize(newest.task), ...tokenize(newest.title)]),
+      ).slice(0, 12),
+      recommendedTool: newest.recommendedTool,
+      prompt: canonical.prompt,
+      adoptedCount: sorted.filter((c) => c.adopted === true).length,
+      totalCount: sorted.length,
+      avgRating: ratings.length ? ratings.reduce((s, r) => s + r, 0) / ratings.length : 0,
+      ratingCount: ratings.length,
+      origin: "learned",
+      updatedAt: prevById.get(id)?.updatedAt ?? Date.now(),
+    });
+  }
+
+  return rebuilt.sort((a, b) => b.totalCount - a.totalCount).slice(0, 100);
+}

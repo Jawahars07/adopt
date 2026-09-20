@@ -2,6 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 
+/**
+ * Every route renders per-request so the Content-Security-Policy nonce minted in
+ * proxy.ts is actually stamped onto Next's scripts. Next only injects the nonce
+ * during a dynamic render; on a prerendered page the header carries a nonce that
+ * matches nothing, 'strict-dynamic' then voids the 'self' allowance, and every
+ * script on the page is blocked — the app loads as dead HTML.
+ *
+ * The trade is cheap here: these are client components that hydrate and then read
+ * their state from localStorage, so a prerender only ever produced an empty shell.
+ */
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Adopt — GenAI Adoption Companion",
   description:

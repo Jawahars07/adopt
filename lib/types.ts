@@ -68,4 +68,10 @@ export type StoredUseCase = Analysis & {
   adopted?: boolean;
   rating?: number; // 1-5
   painPoint?: string;
+  /**
+   * Why it was abandoned, from the fixed taxonomy in lib/blockers.ts.
+   * Only meaningful when `adopted` is false — this is the negative signal the
+   * Abandonment Ledger is built from, and the thing usage dashboards never capture.
+   */
+  blocker?: import("./blockers").BlockerId;
 };
