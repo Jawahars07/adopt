@@ -256,3 +256,91 @@ export async function recordShadowEvent(ev: {
     on conflict (id) do nothing
   `;
 }
+
+// ── Connections ──────────────────────────────────────────────────────────────
+
+export type ConnectionRow = {
+  toolSlug: ToolSlug;
+  status: string;
+  lastError: string | null;
+  lastSyncedAt: string | null;
+  /** Non-secret config keys that are populated. Values are never returned. */
+  configuredKeys: string[];
+};
+
+export type SyncRunRow = {
+  id: string;
+  toolSlug: ToolSlug;
+  startedAt: string;
+  status: string;
+  rowsWritten: number;
+  sourceEndpoint: string | null;
+  caveat: string | null;
+  error: string | null;
+};
+
+/**
+ * Connection status for the admin surface.
+ *
+ * Deliberately never selects secret_cipher. A credential has no reason to leave
+ * the sync path, and the cheapest way to guarantee that is to not fetch it.
+ */
+export async function getConnections(orgId: string): Promise<ConnectionRow[]> {
+  if (!isDbConfigured()) return [];
+  try {
+    const rows = (await db()`
+      select tool_slug, config, status, last_error, last_synced_at
+      from connections where org_id = ${orgId} order by tool_slug
+    `) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      toolSlug: r.tool_slug as ToolSlug,
+      status: String(r.status),
+      lastError: (r.last_error as string) ?? null,
+      lastSyncedAt: r.last_synced_at ? new Date(r.last_synced_at as string).toISOString() : null,
+      configuredKeys: Object.keys((r.config as Record<string, string>) ?? {}),
+    }));
+  } catch (err) {
+    console.error("[adopt] could not read connections:", err);
+    return [];
+  }
+}
+
+export async function getRecentSyncRuns(orgId: string, limit = 10): Promise<SyncRunRow[]> {
+  if (!isDbConfigured()) return [];
+  try {
+    const rows = (await db()`
+      select id, tool_slug, started_at, status, rows_written, source_endpoint, caveat, error
+      from sync_runs where org_id = ${orgId} order by started_at desc limit ${limit}
+    `) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: String(r.id),
+      toolSlug: r.tool_slug as ToolSlug,
+      startedAt: new Date(r.started_at as string).toISOString(),
+      status: String(r.status),
+      rowsWritten: Number(r.rows_written ?? 0),
+      sourceEndpoint: (r.source_endpoint as string) ?? null,
+      caveat: (r.caveat as string) ?? null,
+      error: (r.error as string) ?? null,
+    }));
+  } catch (err) {
+    console.error("[adopt] could not read sync runs:", err);
+    return [];
+  }
+}
+
+/** How many usage rows are measured from a vendor API versus seeded. */
+export async function getUsageProvenance(orgId: string): Promise<{ api: number; seed: number }> {
+  if (!isDbConfigured()) return { api: 0, seed: 0 };
+  try {
+    const rows = (await db()`
+      select source, count(*)::int as n from tool_usage_monthly
+      where org_id = ${orgId} group by source
+    `) as { source: string; n: number }[];
+    return {
+      api: rows.find((r) => r.source === "api")?.n ?? 0,
+      seed: rows.find((r) => r.source === "seed")?.n ?? 0,
+    };
+  } catch {
+    return { api: 0, seed: 0 };
+  }
+}

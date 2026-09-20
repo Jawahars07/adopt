@@ -130,3 +130,56 @@ create table if not exists patterns (
   primary key (org_id, tool_slug, category),
   constraint adopted_not_over_attempts check (adopted_count <= attempts)
 );
+
+-- ── Vendor connections ───────────────────────────────────────────────────────
+--
+-- Credentials for pulling real seat activity from each vendor's admin API.
+--
+-- Secrets are stored encrypted (AES-256-GCM, see lib/crypto.ts) with a key that
+-- lives only in the environment, never in the database. The ciphertext column is
+-- useless on its own, so a database dump does not hand over a tenant's Graph
+-- token. Nothing here is ever logged or returned to the browser.
+create table if not exists connections (
+  org_id        text not null references orgs(id) on delete cascade,
+  tool_slug     text not null,
+  -- Non-secret configuration: tenant id, org login, workspace id.
+  config        jsonb not null default '{}'::jsonb,
+  -- Encrypted credential blob. Format: v1.<iv>.<authTag>.<ciphertext>, base64url.
+  secret_cipher text,
+  status        text not null default 'unconfigured',
+  last_error    text,
+  last_synced_at timestamptz,
+  created_at    timestamptz not null default now(),
+  primary key (org_id, tool_slug),
+  constraint connection_status_valid
+    check (status in ('unconfigured', 'ready', 'error', 'disabled'))
+);
+
+-- Audit trail for every sync attempt.
+--
+-- A number on a CIO's screen needs a provenance story: which connector produced
+-- it, when, from which endpoint, and whether anything was estimated. Without
+-- this the seat figures are just as unaccountable as the vendor dashboards Adopt
+-- is arguing against.
+create table if not exists sync_runs (
+  id            text primary key,
+  org_id        text not null references orgs(id) on delete cascade,
+  tool_slug     text not null,
+  started_at    timestamptz not null default now(),
+  finished_at   timestamptz,
+  status        text not null default 'running',
+  rows_written  integer not null default 0,
+  -- Which documented endpoint the data came from, recorded verbatim.
+  source_endpoint text,
+  -- Set when a connector could not measure something and derived it instead.
+  caveat        text,
+  error         text,
+  constraint sync_status_valid check (status in ('running', 'ok', 'partial', 'failed'))
+);
+
+create index if not exists sync_runs_org_started_idx on sync_runs (org_id, started_at desc);
+
+-- Where each usage row came from, so the UI can distinguish a measured figure
+-- from a seeded one. Defaults to 'seed' because that is what already exists.
+alter table tool_usage_monthly
+  add column if not exists source text not null default 'seed';

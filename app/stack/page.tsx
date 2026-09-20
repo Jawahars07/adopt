@@ -1,5 +1,5 @@
 import { buildStackReport, type ToolVerdict } from "@/lib/analytics";
-import { getWorkspace } from "@/lib/store";
+import { getUsageProvenance, getWorkspace } from "@/lib/store";
 import { Chip, Eyebrow, Figure, PageHead, ProvenanceNote, Reconcile, Spark, eur, num, type Tone } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +14,9 @@ const VERDICT: Record<ToolVerdict, { label: string; tone: Tone }> = {
 export default async function StackPage() {
   const ws = await getWorkspace();
   const report = buildStackReport(ws.stack, ws.usage, ws.useCases, ws.org.headcount);
+  const provenance = await getUsageProvenance(ws.org.id);
+  const measuredRows = provenance.api;
+  const totalRows = provenance.api + provenance.seed;
   const earnedShare = report.totalSeats ? report.totalActiveSeats / report.totalSeats : 0;
 
   return (
@@ -60,6 +63,33 @@ export default async function StackPage() {
           </div>
           <Reconcile earned={report.totalActiveSeats} total={report.totalSeats} />
         </div>
+
+        {/* Provenance, next to the money. A euro figure whose source is not
+            stated is exactly the unaccountable number this page exists to
+            replace, so the claim and its basis travel together. */}
+        <p className="mt-4 text-xs leading-relaxed text-dim">
+          {measuredRows === 0 ? (
+            <>
+              <span className="text-caution">Seat activity is seeded, not measured.</span> These figures
+              demonstrate the method. Connect a vendor API on{" "}
+              <a href="/connections" className="text-signal underline-offset-2 hover:underline">
+                Connections
+              </a>{" "}
+              and this page recomputes from your own admin data.
+            </>
+          ) : (
+            <>
+              <span className="text-positive">
+                {measuredRows} of {totalRows} monthly rows measured from a vendor admin API.
+              </span>{" "}
+              Provenance per sync on{" "}
+              <a href="/connections" className="text-signal underline-offset-2 hover:underline">
+                Connections
+              </a>
+              .
+            </>
+          )}
+        </p>
       </section>
 
       {/* Tier 2 — per tool. */}

@@ -52,6 +52,7 @@ const NAV = [
   { href: "/ledger", label: "Ledger", hint: "What is working, and what to do about it" },
   { href: "/stack", label: "Stack", hint: "Seats, cost and coverage" },
   { href: "/shadow", label: "Shadow", hint: "Work leaving the licensed stack" },
+  { href: "/connections", label: "Connections", hint: "Where the seat numbers come from" },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
