@@ -12,7 +12,15 @@
  */
 import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { neon } from "@neondatabase/serverless";
+import { neon, neonConfig } from "@neondatabase/serverless";
+
+// Same override as lib/db.ts, and for the same reason: the driver's default
+// rewrites the first hostname label to "api.", which for a connection string
+// carrying a compute segment (ep-xxx.c-6.region...) yields api.c-6.region...,
+// a host that resolves intermittently and then stops. Seeding was relying on
+// that default and would have failed the same way — just later, and during a
+// database setup rather than a request.
+neonConfig.fetchEndpoint = (host) => `https://${host}/sql`;
 
 const url = process.env.DATABASE_URL;
 if (!url) {
