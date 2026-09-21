@@ -89,11 +89,78 @@ await page.goto(`${BASE}/shadow`, { waitUntil: "networkidle" });
 console.log("\n=== F. ROUTE FLOW, END TO END ===");
 await page.goto(BASE, { waitUntil: "networkidle" });
 {
-  await page.fill("#task", "Review the attached 120 page supplier contract and extract our obligations");
-  await page.locator('button[type="submit"]').click();
-  await page.waitForSelector("text=Use this", { timeout: 15000 });
+  // Read the PRIMARY recommendation specifically. Asserting on whole-page text
+  // is vacuous here: every alternate is also printed under "ALSO LICENSED", so
+  // t.includes("Claude Enterprise") passed even when the primary was Gemini.
+  const primaryPanel = () => page.locator("section.panel").filter({ hasText: "Use this" }).first();
+  const primaryName = async () => (await primaryPanel().locator("h2").first().innerText()).trim();
+
+  // /api/route-task allows 30 POSTs per minute per IP (route-task/route.ts).
+  // tests/security.mjs deliberately burns ~19 of them on rate-limit probes, so
+  // running the suites back to back lands here as a 429 — which no selector
+  // timeout can wait out, because the recommendation never renders at all.
+  // Wait the window out, and if it is something else, say what the page said
+  // instead of dying on an opaque timeout.
+  async function submitTask(task) {
+    await page.fill("#task", task);
+    await page.locator('button[type="submit"]').click();
+    const rendered = await page
+      .waitForSelector("text=Use this", { timeout: 20000 })
+      .then(() => true)
+      .catch(() => false);
+    if (rendered) return;
+
+    const body = await text();
+    if (/too many requests/i.test(body)) {
+      console.log("  ...rate limited by the previous suite, waiting 61s for the window");
+      // The 429 the previous suite provoked surfaces as a failed-fetch console
+      // error. That is this harness's own doing, not a product defect, so drop
+      // it — the "zero console errors" check must stay meaningful rather than
+      // become a known-noisy assertion people learn to ignore.
+      for (let i = errors.length - 1; i >= 0; i--) {
+        if (/429|too many requests|Failed to load resource/i.test(errors[i])) errors.splice(i, 1);
+      }
+      await page.waitForTimeout(61000);
+      await page.locator('button[type="submit"]').click();
+      await page.waitForSelector("text=Use this", { timeout: 20000 });
+      return;
+    }
+    throw new Error("Route flow rendered no recommendation. Page said: " + body.slice(0, 300));
+  }
+
+  // Case 1: pure long-document work, no company-context wording. The
+  // long-context specialist should win on raw capability.
+  await submitTask("Review the attached 120 page supplier contract for unusual indemnity clauses");
+  check("Long-document work routes to the long-context specialist",
+    (await primaryName()).includes("Claude Enterprise"), await primaryName());
+
+  // Case 2: the same task, reworded to need company context. Grounding must now
+  // outrank raw capability — this is the whole thesis of the router, and the
+  // old assertion could not tell the two cases apart.
+  await page.goto(BASE, { waitUntil: "networkidle" });
+  await submitTask("Review the attached 120 page supplier contract and extract our obligations");
+  // Which tool wins here is evidence-dependent: observed adoption is read from
+  // the database and fed into the ranking, and this suite itself writes
+  // abandonment rows every time it clicks "Did not use it". Asserting a named
+  // winner would be asserting today's data rather than the product's behaviour —
+  // it passed for two runs and then inverted. The grounding-beats-raw-capability
+  // contrast is pinned deterministically in tests/routing.test.ts section 12,
+  // against a controlled stack with no database in the loop.
+  //
+  // What end-to-end can honestly assert is that the surface stays internally
+  // consistent with whatever the engine decided.
+  // Scope to the score elements. Scraping "NN/100" out of the page text also
+  // catches "Rated 95/100 ... in the catalog" from inside the primary's own
+  // reasons, which made this look like the primary was outranked by itself.
+  const scores = (await page.locator(".num").allInnerTexts())
+    .map((v) => v.trim())
+    .filter((v) => /^\d+\/100$/.test(v))
+    .map((v) => Number(v.split("/")[0]));
+  check("The primary names a licensed tool", (await primaryName()).length > 0, await primaryName());
+  check("The primary outranks every alternate it is shown beside",
+    scores.length > 1 && scores[0] === Math.max(...scores), scores.join(" > "));
+
   const t = await text();
-  check("Routes a long-document task to the long-context specialist", t.includes("Claude Enterprise"), t.slice(0, 120));
   check("Shows its reasoning", t.includes("Rated ") || t.includes("Reaches your own content"));
   check("Shows the honest caveat", t.includes("Where it disappoints"));
 

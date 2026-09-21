@@ -208,6 +208,187 @@ console.log("\n=== 8. REASONS ARE ALWAYS PRESENT ===");
     r.alternates.every((a) => a.score <= (r.primary?.score ?? 0)));
 }
 
+console.log("\n=== 9. UNDECLARED SENSITIVITY ===");
+{
+  // The person picks "internal" and then describes payroll. The classifier is
+  // meant to notice, because the cost of not noticing is personal data in an
+  // unapproved tool.
+  check("Salary wording raises a warning the user did not declare",
+    classify("Draft an email about the salary review for my team").sensitivityWarning);
+  check("GDPR wording raises a warning",
+    classify("Handle a GDPR subject access request from a customer").sensitivityWarning);
+  check("Performance review wording raises a warning",
+    classify("Write up the performance review notes for my direct report").sensitivityWarning);
+
+  // Regression guards for the substring bug documented on hasTerm(). Both of
+  // these were live defects: "nda" matched inside "agenda", "our" inside
+  // "sources", and the second one promoted a 44/100 tool to 62/100 while
+  // suppressing a gap warning the user needed to see.
+  check("'agenda' does not trigger the NDA signal",
+    !classify("Draft the agenda for Monday's stand-up").sensitivityWarning);
+  check("'sources' does not grant spurious org context",
+    !classify("Find the sources for this market research claim").needsOrgContext);
+  check("Genuine org wording is still detected",
+    classify("Summarise our Q3 board pack from SharePoint").needsOrgContext);
+}
+
+console.log("\n=== 10. SEAT REACH AND POLICY CHANGE THE COVERAGE ANSWER ===");
+{
+  // The reference stack looks fully covered. It is only covered for the people
+  // who actually hold a seat.
+  const naive = findCoverageGaps(STACK);
+  const byReach = findCoverageGaps(STACK, { headcount: 8800, minSeatShare: 0.4 });
+  check("Naive coverage reports no gap", naive.length === 0, naive.join(", "));
+  check("Seat reach reveals gaps the naive check missed",
+    byReach.length > naive.length, `reach gaps: ${byReach.join(", ")}`);
+  check("Code is uncovered once reach is required", byReach.includes("code"),
+    `gaps: ${byReach.join(", ")}`);
+  check("Email stays covered — Copilot reaches enough staff", !byReach.includes("email"));
+
+  // Boundary: the share test is `< minSeatShare`, so exactly at the line counts.
+  const atLine: OrgTool[] = [{ slug: "github-copilot", seats: 4000, approvedForSensitive: true, monthlyPriceEur: 19 }];
+  const belowLine: OrgTool[] = [{ slug: "github-copilot", seats: 3999, approvedForSensitive: true, monthlyPriceEur: 19 }];
+  check("Exactly at the seat-share threshold counts as reachable",
+    !findCoverageGaps(atLine, { headcount: 10000, minSeatShare: 0.4 }).includes("code"));
+  check("One seat below the threshold does not",
+    findCoverageGaps(belowLine, { headcount: 10000, minSeatShare: 0.4 }).includes("code"));
+
+  // Policy: licensed is not the same as usable for sensitive work.
+  const policyStack: OrgTool[] = [
+    { slug: "copilot-m365", seats: 500, approvedForSensitive: true, monthlyPriceEur: 28 },
+    { slug: "chatgpt-enterprise", seats: 500, approvedForSensitive: false, monthlyPriceEur: 25 },
+    { slug: "perplexity-enterprise", seats: 500, approvedForSensitive: false, monthlyPriceEur: 35 },
+  ];
+  check("On paper this stack covers every category",
+    findCoverageGaps(policyStack).length === 0, findCoverageGaps(policyStack).join(", "));
+  const sensitiveGaps = findCoverageGaps(policyStack, { requireApproved: true });
+  check("For confidential work most of that coverage disappears",
+    sensitiveGaps.includes("research") && sensitiveGaps.includes("code") && sensitiveGaps.includes("long-doc"),
+    `gaps: ${sensitiveGaps.join(", ")}`);
+}
+
+console.log("\n=== 11. DUPLICATE SPECIALISTS ===");
+{
+  // Two coding assistants overlap in exactly one category, which a >=2 rule
+  // misses — and it is the most common redundancy in a real AI stack.
+  const twoCoders: OrgTool[] = [
+    { slug: "github-copilot", seats: 400, approvedForSensitive: true, monthlyPriceEur: 19 },
+    { slug: "cursor", seats: 350, approvedForSensitive: true, monthlyPriceEur: 20 },
+  ];
+  const dup = findOverlaps(twoCoders);
+  check("Two coding assistants are flagged as redundant", dup.length === 1, `got ${dup.length}`);
+  check("The redundancy names the shared category", dup[0]?.categories.join(",") === "code",
+    dup[0]?.categories.join(",") ?? "none");
+  check("The redundancy carries the combined annual bill",
+    dup[0]?.combinedAnnualEur === (400 * 19 + 350 * 20) * 12, `got ${dup[0]?.combinedAnnualEur}`);
+
+  // And it must not fire on tools that merely both exist.
+  const notDup: OrgTool[] = [
+    { slug: "copilot-m365", seats: 100, approvedForSensitive: true, monthlyPriceEur: 28 },
+    { slug: "github-copilot", seats: 100, approvedForSensitive: true, monthlyPriceEur: 19 },
+  ];
+  check("A context engine and a coding assistant are not redundant",
+    findOverlaps(notDup).length === 0, findOverlaps(notDup).map((o) => o.categories.join("/")).join(", "));
+  check("The reference stack still reports exactly one overlap",
+    findOverlaps(STACK).length === 1,
+    findOverlaps(STACK).map((o) => `${o.aName}/${o.bName}`).join(", "));
+}
+
+console.log("\n=== 12. REAL ORGANISATION SHAPES ===");
+{
+  // A Google-first company.
+  const googleShop: OrgTool[] = [
+    { slug: "gemini-workspace", seats: 1200, approvedForSensitive: true, monthlyPriceEur: 22 },
+    { slug: "chatgpt-enterprise", seats: 300, approvedForSensitive: false, monthlyPriceEur: 25 },
+  ];
+  const gmail = route({
+    task: "Draft a reply to this Gmail thread from our client",
+    sensitivity: "internal",
+    stack: googleShop,
+  });
+  check("Workspace-native mail work routes to Gemini",
+    gmail.primary?.slug === "gemini-workspace", `got ${gmail.primary?.slug}`);
+  check("Grounding is cited as the reason",
+    gmail.primary?.reasons.some((r) => r.includes("your own content")) ?? false);
+
+  // A law firm: long documents, everything confidential.
+  const lawFirm: OrgTool[] = [
+    { slug: "claude-enterprise", seats: 200, approvedForSensitive: true, monthlyPriceEur: 28 },
+    { slug: "chatgpt-enterprise", seats: 200, approvedForSensitive: false, monthlyPriceEur: 25 },
+  ];
+  const contract = route({
+    task: "Review the attached 120 page supplier contract for unusual indemnity clauses",
+    sensitivity: "confidential",
+    stack: lawFirm,
+  });
+  check("Confidential long-document work routes to the cleared tool",
+    contract.primary?.slug === "claude-enterprise", `got ${contract.primary?.slug}`);
+  check("The uncleared tool is excluded, not merely ranked lower",
+    contract.excluded.some((e) => e.slug === "chatgpt-enterprise"));
+  check("No gap is raised when a cleared tool genuinely fits",
+    contract.gap === null, `gap: ${contract.gap?.kind}`);
+
+  // An engineering-only stack asked to do marketing work.
+  const engOnly: OrgTool[] = [
+    { slug: "github-copilot", seats: 300, approvedForSensitive: true, monthlyPriceEur: 19 },
+    { slug: "cursor", seats: 200, approvedForSensitive: true, monthlyPriceEur: 20 },
+  ];
+  const deck = route({
+    task: "Build an investor pitch deck from this quarter's numbers",
+    sensitivity: "internal",
+    stack: engOnly,
+  });
+  check("A coding stack asked for slides admits a poor fit",
+    deck.gap?.kind === "poor-fit", `gap: ${deck.gap?.kind}`);
+  check("The remedy points at a better unlicensed tool with a score",
+    (deck.gap?.remedy ?? "").includes("/100"), deck.gap?.remedy ?? "none");
+}
+
+console.log("\n=== 13. DETERMINISM AND BOUNDS ===");
+{
+  const input = {
+    task: "Summarise the board pack and list the decisions",
+    sensitivity: "internal" as const,
+    stack: STACK,
+  };
+  check("Routing the same input twice gives an identical result",
+    JSON.stringify(route(input)) === JSON.stringify(route(input)));
+
+  const r = route({ task: "Draft a policy for our intranet", sensitivity: "internal", stack: STACK });
+  const scores = [r.primary, ...r.alternates].filter(Boolean).map((x) => x!.score);
+  check("Every score stays within 0-100",
+    scores.every((s) => s >= 0 && s <= 100), scores.join(","));
+
+  const zeroSeat = route({
+    task: "Refactor this TypeScript function",
+    sensitivity: "internal",
+    stack: [
+      { slug: "github-copilot", seats: 0, approvedForSensitive: true, monthlyPriceEur: 19 },
+      { slug: "claude-enterprise", seats: 50, approvedForSensitive: true, monthlyPriceEur: 28 },
+    ],
+  });
+  check("A tool with no seats is excluded with a reason",
+    zeroSeat.excluded.some((e) => e.slug === "github-copilot" && e.reason === "No seats licensed."));
+  check("A zero-seat tool never becomes the recommendation",
+    zeroSeat.primary?.slug === "claude-enterprise", `got ${zeroSeat.primary?.slug}`);
+
+  // Weekly recurrence correctly outranks the artifact noun.
+  check("Weekly recurrence is read as an automation candidate",
+    classify("Every week I have to compile the same status report").category === "automation",
+    classify("Every week I have to compile the same status report").category);
+
+  // KNOWN LIMITATION, pinned deliberately so it cannot drift unnoticed.
+  // "every week" sits in BOTH the automation strong-signal list and the
+  // recurrence markers, so it scores 3+5; "every month" is only a recurrence
+  // marker and scores 5, which a strong artifact noun can outrank. Monthly
+  // recurring work therefore classifies by its artifact, not its shape.
+  // Fixing it properly means separating "recurring work" from "a recurring
+  // event's name" — a design change, not a patch. Flagged, not silently altered.
+  check("PINNED: monthly recurrence loses to a strong artifact noun",
+    classify("Every month I rebuild the same Excel pivot table for the board").category === "spreadsheet",
+    classify("Every month I rebuild the same Excel pivot table for the board").category);
+}
+
 console.log(`\n=== ${passed}/${passed + failures.length} ROUTING CHECKS PASS ===`);
 if (failures.length) {
   failures.forEach((f) => console.log("  FAILED: " + f));

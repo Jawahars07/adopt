@@ -30,3 +30,6 @@ next-env.d.ts.bak
 # vercel
 .vercel
 .tsbuild/
+
+# local db backups — never commit
+/.backups/
