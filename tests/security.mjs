@@ -151,26 +151,48 @@ console.log("\n=== 6. ADMIN ENDPOINTS (they accept vendor secrets) ===");
 {
   const adminToken = process.env.ADOPT_ADMIN_TOKEN || "";
 
-  const noTok = await post("/api/connections", { toolSlug: "github-copilot", fields: { org: "x", token: "y" } });
+  /**
+   * The admin routes throttle BEFORE they authenticate, deliberately — with the
+   * order reversed a bad token returns 401 without ever reaching the limiter,
+   * which left the token brute-forceable at unlimited rate.
+   *
+   * The consequence for this suite is that a burst spent on the same bucket
+   * earlier turns these 401s into 429s, and the checks fail while the system is
+   * behaving exactly as intended. Rather than widen the assertion to accept 429
+   * — which would degrade it to "anything but 200" and stop proving that auth
+   * works at all — wait the window out and ask again. Costs nothing on a clean
+   * run, because a clean run is never throttled here.
+   */
+  const unthrottled = async (send) => {
+    let res = await send();
+    if (res.status !== 429) return res;
+    const wait = (Number(res.headers.get("Retry-After")) || 60) + 1;
+    console.log(`  ...admin bucket already spent, waiting ${wait}s to test auth rather than the limiter`);
+    await new Promise((r) => setTimeout(r, wait * 1000));
+    res = await send();
+    return res;
+  };
+
+  const noTok = await unthrottled(() => post("/api/connections", { toolSlug: "github-copilot", fields: { org: "x", token: "y" } }));
   check("POST /api/connections without a token is rejected", noTok.status === 401 || noTok.status === 503,
     `status=${noTok.status}`);
 
-  const badTok = await fetch(BASE + "/api/connections", {
+  const badTok = await unthrottled(() => fetch(BASE + "/api/connections", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-adopt-admin": "definitely-not-the-token" },
     body: JSON.stringify({ toolSlug: "github-copilot", fields: { org: "x", token: "y" } }),
-  });
+  }));
   check("Wrong admin token is rejected", badTok.status === 401 || badTok.status === 503, `status=${badTok.status}`);
 
-  const syncNoTok = await post("/api/sync", {});
+  const syncNoTok = await unthrottled(() => post("/api/sync", {}));
   check("POST /api/sync without a token is rejected", syncNoTok.status === 401 || syncNoTok.status === 503,
     `status=${syncNoTok.status}`);
 
-  const delNoTok = await fetch(BASE + "/api/connections", {
+  const delNoTok = await unthrottled(() => fetch(BASE + "/api/connections", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ toolSlug: "github-copilot" }),
-  });
+  }));
   check("DELETE /api/connections without a token is rejected",
     delNoTok.status === 401 || delNoTok.status === 503, `status=${delNoTok.status}`);
 

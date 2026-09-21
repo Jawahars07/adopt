@@ -18,9 +18,12 @@ export const maxDuration = 60;
  * revoked rather than an error returned.
  */
 export async function POST(req: Request) {
-  const auth = requireAdmin(req);
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-
+  // Throttle BEFORE authenticating. With the order reversed, requireAdmin
+  // returns 401 on a bad token and the limiter below is never reached, so the
+  // only requests being rate-limited are the ones that already proved they hold
+  // the token. Verified on /api/connections: 30 consecutive bad-token requests
+  // all returned 401 and not one 429. That made the admin endpoints the cheapest
+  // surface to brute-force the token against.
   const limit = rateLimit(req, "sync", 6, 60_000);
   if (!limit.ok) {
     return NextResponse.json(
@@ -28,6 +31,9 @@ export async function POST(req: Request) {
       { status: 429, headers: { "Retry-After": String(limit.retryAfter) } },
     );
   }
+
+  const auth = requireAdmin(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await readJsonBody(req);
   const slug = sanitizeText(body?.toolSlug, 60);

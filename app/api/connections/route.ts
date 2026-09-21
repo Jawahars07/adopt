@@ -20,13 +20,19 @@ export const runtime = "nodejs";
  * stored, never their values.
  */
 export async function POST(req: Request) {
-  const auth = requireAdmin(req);
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-
+  // Throttle BEFORE authenticating. With the order reversed, requireAdmin
+  // returns 401 on a bad token and the limiter below is never reached, so the
+  // only requests being rate-limited are the ones that already proved they hold
+  // the token. Verified: 30 consecutive bad-token requests all returned 401 and
+  // not one 429, against a 20/60s limit. That makes this the cheapest surface to
+  // brute-force the admin token against.
   const limit = rateLimit(req, "connections", 20, 60_000);
   if (!limit.ok) {
     return NextResponse.json({ error: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
   }
+
+  const auth = requireAdmin(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   if (!isEncryptionConfigured()) {
     return NextResponse.json(
@@ -82,6 +88,13 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  // DELETE had no throttle at all — every other handler had one. Same order as
+  // POST: limit first, then authenticate.
+  const limit = rateLimit(req, "connections", 20, 60_000);
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
+  }
+
   const auth = requireAdmin(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
