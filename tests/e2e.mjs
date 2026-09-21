@@ -89,11 +89,40 @@ await page.goto(`${BASE}/shadow`, { waitUntil: "networkidle" });
 console.log("\n=== F. ROUTE FLOW, END TO END ===");
 await page.goto(BASE, { waitUntil: "networkidle" });
 {
+  // Read the PRIMARY recommendation specifically. Asserting on whole-page text
+  // is vacuous here: every alternate is also printed under "ALSO LICENSED", so
+  // t.includes("Claude Enterprise") passed even when the primary was Gemini.
+  const primaryPanel = () => page.locator("section.panel").filter({ hasText: "Use this" }).first();
+  const primaryName = async () => (await primaryPanel().locator("h2").first().innerText()).trim();
+
+  // The first POST also writes a row, and a cold Neon connection can take
+  // longer than the old 15s ceiling — that made this flaky rather than wrong.
+  const SETTLE = 30000;
+
+  // Case 1: pure long-document work, no company-context wording. The
+  // long-context specialist should win on raw capability.
+  await page.fill("#task", "Review the attached 120 page supplier contract for unusual indemnity clauses");
+  await page.locator('button[type="submit"]').click();
+  await page.waitForSelector("text=Use this", { timeout: SETTLE });
+  check("Long-document work routes to the long-context specialist",
+    (await primaryName()).includes("Claude Enterprise"), await primaryName());
+
+  // Case 2: the same task, reworded to need company context. Grounding must now
+  // outrank raw capability — this is the whole thesis of the router, and the
+  // old assertion could not tell the two cases apart.
+  await page.goto(BASE, { waitUntil: "networkidle" });
   await page.fill("#task", "Review the attached 120 page supplier contract and extract our obligations");
   await page.locator('button[type="submit"]').click();
-  await page.waitForSelector("text=Use this", { timeout: 15000 });
+  await page.waitForSelector("text=Use this", { timeout: SETTLE });
+  const grounded = await primaryName();
+  check("Company-context wording promotes a grounded tool over the specialist",
+    !grounded.includes("Claude Enterprise"), `primary stayed ${grounded}`);
+  check("The primary cites grounding as its reason",
+    (await primaryPanel().innerText()).includes("Reaches your own content"));
+  check("The demoted specialist is still offered as an alternate",
+    (await text()).includes("Claude Enterprise"));
+
   const t = await text();
-  check("Routes a long-document task to the long-context specialist", t.includes("Claude Enterprise"), t.slice(0, 120));
   check("Shows its reasoning", t.includes("Rated ") || t.includes("Reaches your own content"));
   check("Shows the honest caveat", t.includes("Where it disappoints"));
 

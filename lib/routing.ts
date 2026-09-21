@@ -435,7 +435,7 @@ export type Overlap = {
  * applications per organisation; in AI stacks the redundancy is usually invisible
  * because the tools have different names and the same job.
  */
-export function findOverlaps(stack: OrgTool[], strongAt = 75): Overlap[] {
+export function findOverlaps(stack: OrgTool[], strongAt = 75, duplicateAt = 90): Overlap[] {
   const out: Overlap[] = [];
   for (let i = 0; i < stack.length; i++) {
     for (let j = i + 1; j < stack.length; j++) {
@@ -445,7 +445,18 @@ export function findOverlaps(stack: OrgTool[], strongAt = 75): Overlap[] {
       const categories = (Object.keys(a.strengths) as TaskCategory[]).filter(
         (c) => a.strengths[c] >= strongAt && b.strengths[c] >= strongAt,
       );
-      if (categories.length >= 2) {
+      // Two strong categories is the general signal for redundancy. But the
+      // single most common real AI-stack duplication — two coding assistants —
+      // overlaps in exactly ONE category, so a >=2 rule silently misses it.
+      // Cursor's own catalog entry says it "overlaps heavily with any other
+      // coding assistant"; the detector used to disagree. A pair that both score
+      // >=duplicateAt in the same category are doing the same job, however
+      // narrow that job is.
+      const duplicateSpecialists =
+        categories.length === 1 &&
+        a.strengths[categories[0]] >= duplicateAt &&
+        b.strengths[categories[0]] >= duplicateAt;
+      if (categories.length >= 2 || duplicateSpecialists) {
         out.push({
           a: a.slug,
           b: b.slug,
@@ -458,7 +469,11 @@ export function findOverlaps(stack: OrgTool[], strongAt = 75): Overlap[] {
       }
     }
   }
-  return out.sort((x, y) => y.categories.length - x.categories.length);
+  // Broadest overlap first; for equal breadth the more expensive pair leads,
+  // because that is the one worth acting on.
+  return out.sort(
+    (x, y) => y.categories.length - x.categories.length || y.combinedAnnualEur - x.combinedAnnualEur,
+  );
 }
 
 /**
